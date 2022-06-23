@@ -183,7 +183,7 @@ elif [[ $COMMAND == "hwver" ]]; then
 elif [[ $COMMAND == "hwid" ]]; then
   getPlatform
   # Raspberry Pi
-  if (( $platform >= 0 )) && (( $platform <= 9 )); then
+  if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( $platform <= 199 )); then
     cat /proc/cpuinfo | grep Serial |  printf '%s' $(cut -n -d ' ' -f 2) | md5sum | cut -d"-" -f1 -
   # Pine64 Devices
   elif (( $platform >= 40 )) && (( $platform <= 49 )); then 
@@ -652,6 +652,7 @@ elif [[ $COMMAND == "dht22" ]]; then
   fi
 
 elif [[ $COMMAND == "undervoltage" ]]; then
+  getPlatform
   if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( $platform <= 199 )); then
     STATUS=$(vcgencmd get_throttled | sed -n 's|^throttled=\(.*\)|\1|p')
     if [[ ${STATUS} -ne 0 ]]; then

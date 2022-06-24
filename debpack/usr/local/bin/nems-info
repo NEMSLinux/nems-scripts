@@ -654,28 +654,26 @@ elif [[ $COMMAND == "dht22" ]]; then
 elif [[ $COMMAND == "undervoltage" ]]; then
   getPlatform
   if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( $platform <= 199 )); then
-    STATUS=$(vcgencmd get_throttled | sed -n 's|^throttled=\(.*\)|\1|p')
+    STATUS=$(sudo /usr/bin/vcgencmd get_throttled | sed -n 's|^throttled=\(.*\)|\1|p')
     if [[ ${STATUS} -ne 0 ]]; then
-      echo ""
       if [ $((${STATUS} & 0x00001)) -ne 0 ]; then
-        echo "Power is currently Under Voltage"
+        if [[ $VARIABLE == "int" ]]; then
+          echo -n 1
+        else
+          echo "Power is bad."
+        fi
       elif [ $((${STATUS} & 0x10000)) -ne 0 ]; then
-        echo "Power has previously been Under Voltage"
-      fi
-      if [ $((${STATUS} & 0x00002)) -ne 0 ]; then
-        echo "ARM Frequency is currently Capped"
-      elif [ $((${STATUS} & 0x20000)) -ne 0 ]; then
-        echo "ARM Frequency has previously been Capped"
-      fi
-      if [ $((${STATUS} & 0x00004)) -ne 0 ]; then
-        echo "CPU is currently Throttled"
-      elif [ $((${STATUS} & 0x40000)) -ne 0 ]; then
-        echo "CPU has previously been Throttled"
-      fi
-      if [ $((${STATUS} & 0x00008)) -ne 0 ]; then
-        echo "Currently at Soft Temperature Limit"
-      elif [ $((${STATUS} & 0x80000)) -ne 0 ]; then
-        echo "Previously at Soft Temperature Limit"
+        if [[ $VARIABLE == "int" ]]; then
+          echo -n 2
+        else
+          echo "Power is flapping."
+        fi
+      else
+        if [[ $VARIABLE == "int" ]]; then
+          echo -n 0
+        else
+          echo "Power is good."
+        fi
       fi
     fi
   else

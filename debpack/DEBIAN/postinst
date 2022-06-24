@@ -1,2 +1,11 @@
 #!/bin/bash
 npm install -g speed-cloudflare-cli
+
+## Allow nagios and users in nagios group (your NEMS user) to run root nems-info commands without a password
+
+# nems-info undervoltage
+if ! grep -q "%nagios ALL=NOPASSWD: /usr/bin/vcgencmd" /etc/sudoers; then
+  echo '%nagios ALL=NOPASSWD: /usr/bin/vcgencmd' | sudo EDITOR='tee -a' visudo
+fi
+
+############################################################################################################

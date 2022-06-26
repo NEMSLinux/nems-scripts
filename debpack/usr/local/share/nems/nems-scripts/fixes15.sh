@@ -773,16 +773,6 @@ fi
     cronupdate=1
   fi
 
-  if ! grep -q "NEMS0012" /tmp/cron.tmp; then
-    if [[ ! -d /var/log/nems/nems-tools/ ]]; then
-      mkdir /var/log/nems/nems-tools/
-    fi
-    printf "\n# nems-tools warninglight NEMS0012\n@reboot /root/nems/nems-tools/warninglight >> /var/log/nems/nems-tools/warninglight 2>&1\n" >> /tmp/cron.tmp
-    cronupdate=1
-    # Run it now
-    /root/nems/nems-tools/warninglight >> /var/log/nems/nems-tools/warninglight 2>&1 &
-  fi
-
   if ! grep -q "NEMS0013" /tmp/cron.tmp; then
     printf "\n# NEMS Cloud State Update NEMS0013\n* * * * * /usr/local/share/nems/nems-scripts/cloud.sh > /dev/null 2>&1\n" >> /tmp/cron.tmp
     cronupdate=1
@@ -793,36 +783,11 @@ fi
     cronupdate=1
   fi
 
-  # Install piWatcher daemon, will load on boot if hat present. Otherwise, will do nothing.
-  if ! grep -q "NEMS0015" /tmp/cron.tmp; then
-    if (( $platform < 10 )); then
-      printf "\n# piWatcher NEMS0015\n@reboot /root/nems/nems-tools/piwatcher > /dev/null 2>&1\n" >> /tmp/cron.tmp
-      cronupdate=1
-    fi
-  fi
-
-  # Install the NEMS Tools GPIO Extender daemon.
-  if ! grep -q "NEMS0016" /tmp/cron.tmp; then
-    printf "\n# NEMS Tools GPIO Extender Server NEMS0016\n@reboot /root/nems/nems-tools/gpio-extender/gpioe-server > /dev/null 2>&1\n" >> /tmp/cron.tmp
-    cronupdate=1
-    # Run it
-    restartwarninglight=1
-    /root/nems/nems-tools/gpio-extender/gpioe-server > /dev/null 2>&1 &
-  fi
-
   if ! grep -q "NEMS0017" /tmp/cron.tmp; then
     printf "\n# Enable non-root access to TEMPer NEMS0017\n@reboot /usr/local/share/nems/nems-scripts/temperinit > /dev/null 2>&1\n" >> /tmp/cron.tmp
     cronupdate=1
     # Run it
     /usr/local/share/nems/nems-scripts/temperinit
-  fi
-
-  # Install PiVoyager daemon, will load on boot if hat present. Otherwise, will do nothing.
-  if ! grep -q "NEMS0018" /tmp/cron.tmp; then
-    if (( $platform < 10 )); then
-      printf "\n# PiVoyager NEMS0018\n@reboot /root/nems/nems-tools/pivoyager > /dev/null 2>&1\n" >> /tmp/cron.tmp
-      cronupdate=1
-    fi
   fi
 
   if ! grep -q "NEMS0019" /tmp/cron.tmp; then
@@ -836,11 +801,6 @@ fi
 
   if ! grep -q "NEMS0020" /tmp/cron.tmp; then
     printf "\n# Set permissions for USB access (TEMPer) NEMS0020\n*/1 * * * * /root/nems/nems-admin/build/500-temper > /dev/null 2>&1\n" >> /tmp/cron.tmp
-    cronupdate=1
-  fi
-
-  if ! grep -q "NEMS0021" /tmp/cron.tmp; then
-    printf "\n# Detect NEMS Server local IP on same Subnet and set NEMS Tools config to point to it NEMS0021\n@reboot /root/nems/nems-tools/detect > /dev/null 2>&1\n" >> /tmp/cron.tmp
     cronupdate=1
   fi
 

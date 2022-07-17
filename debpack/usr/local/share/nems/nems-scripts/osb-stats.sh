@@ -36,7 +36,7 @@ fi
   fi
 
 # Load Account Data (output options are json, serial or blank = :: separated, one item per line
-  data=$(curl -s -F "hwid=$hwid" -F "osbkey=$osbkey" -F "output=json" https://nemslinux.com/api-backend/offsite-backup-checkin.php)
+  data=$(curl -s -F "hwid=$hwid" -F "osbkey=$osbkey" -F "output=json" https://cloud.nemslinux.com/api/offsite-backup-checkin.php)
 
   if jq -e . >/dev/null 2>&1 <<<"$data"; then # Parse reply to make sure it is JSON before clobbering
     if [[ $data == '' ]]; then

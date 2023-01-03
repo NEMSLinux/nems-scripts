@@ -117,4 +117,5 @@ fi
 # Run tasks which need to run daily
 /usr/local/share/nems/nems-scripts/daily
 
+rm -rf $tmpdir
 rm -f /var/run/nems-quickfix.pid

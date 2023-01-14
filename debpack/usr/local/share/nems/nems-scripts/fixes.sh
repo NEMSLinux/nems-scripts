@@ -154,7 +154,7 @@ fi
       # Attempt to delete the nemsadmin user: will not proceed if in use
       # Doing this now instead of during init to avoid crashing during init
       # where user continues as nemsadmin
-      userdel -r nemsadmin
+      /usr/sbin/userdel -r nemsadmin
     fi
   fi
 

@@ -142,7 +142,7 @@ elif [[ $COMMAND == "nemsveravail" ]]; then
   if [[ -f /var/www/html/inc/ver-available.txt ]]; then
     /bin/cat /var/www/html/inc/ver-available.txt
   else
-    /bin/cat /root/nems/nems-migrator/data/nems/ver-current.txt
+    echo 0;
   fi
 
 # Output the number of users connected to server

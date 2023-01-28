@@ -100,6 +100,7 @@ class USBList(object):
           path = os.path.join(Temper.SYSPATH, entry.name)
           device = self._get_usb_device(path)
           if device is not None:
+            device['port'] = entry.name
             info[path] = device
     return info
 
@@ -110,7 +111,7 @@ class USBRead(object):
     self.device = device
     self.verbose = verbose
 
-  def _parse_bytes(self, name, offset, divisor, bytes, info):
+  def _parse_bytes(self, name, offset, divisor, bytes, info, verbose = False):
     '''Data is returned from several devices in a similar format. In the first
     8 bytes, the internal sensors are returned in bytes 2 and 3 (temperature)
     and in bytes 4 and 5 (humidity). In the second 8 bytes, external sensor
@@ -128,9 +129,44 @@ class USBRead(object):
     except:
       return
     try:
+    # Big endian, short (signed) integer (2 Bytes)
+      if verbose:
+        print('Converted value: %s' % binascii.hexlify(bytes[offset:offset+2]))
       info[name] = struct.unpack_from('>h', bytes, offset)[0] / divisor
     except:
       return
+
+  def _read_hidraw_firmware(self, fd, verbose = False):
+    ''' Get firmware identifier'''
+    query = struct.pack('8B', 0x01, 0x86, 0xff, 0x01, 0, 0, 0, 0)
+    if verbose:
+      print('Firmware query: %s' % binascii.b2a_hex(query))
+
+    # Sometimes we don't get all of the expected information from the
+    # device.  We'll retry a few times and hope for the best.
+    # See: https://github.com/urwen/temper/issues/9
+    for i in range(0, 10):
+      os.write(fd, query)
+
+      firmware = b''
+      while True:
+        r, _, _ = select.select([fd], [], [], 0.2)
+        if fd not in r:
+          break
+        data = os.read(fd, 8)
+        firmware += data
+
+      if not len(firmware):
+        os.close(fd)
+        raise RuntimeError('Cannot read device firmware identifier')
+
+      if len(firmware) > 8:
+        break
+
+    if verbose:
+      print('Firmware value: %s %s' %(binascii.b2a_hex(firmware), firmware.decode()))
+
+    return firmware
 
   def _read_hidraw(self, device):
     '''Using the Linux hidraw device, send the special commands and receive the
@@ -142,21 +178,8 @@ class USBRead(object):
     path = os.path.join('/dev', device)
     fd = os.open(path, os.O_RDWR)
 
-    # Get firmware identifier
-    os.write(fd, struct.pack('8B', 0x01, 0x86, 0xff, 0x01, 0, 0, 0, 0))
-    firmware = b''
-    while True:
-      r, _, _ = select.select([fd], [], [], 0.1)
-      if fd not in r:
-        break
-      data = os.read(fd, 8)
-      firmware += data
-
-    if firmware == b'':
-      os.close(fd)
-      return { 'error' : 'Cannot read firmware identifier from device' }
-    if self.verbose:
-      print('Firmware value: %s' % binascii.b2a_hex(firmware))
+    firmware = self._read_hidraw_firmware(fd, self.verbose)
+    #print(firmware[:12])
 
     # Get temperature/humidity
     os.write(fd, struct.pack('8B', 0x01, 0x80, 0x33, 0x01, 0, 0, 0, 0))
@@ -177,12 +200,12 @@ class USBRead(object):
     info['hex_firmware'] = str(binascii.b2a_hex(firmware), 'latin-1')
     info['hex_data'] = str(binascii.b2a_hex(bytes), 'latin-1')
 
-    if info['firmware'][:10] == 'TEMPerF1.4':
+    if info['firmware'][:10] in [ 'TEMPerF1.4', 'TEMPer1F1.' ]:
       info['firmware'] = info['firmware'][:10]
       self._parse_bytes('internal temperature', 2, 256.0, bytes, info)
       return info
 
-    if info['firmware'][:15] == 'TEMPerGold_V3.1':
+    if info['firmware'][:15] in [ 'TEMPerGold_V3.1', 'TEMPerGold_V3.4' ]:
       info['firmware'] = info['firmware'][:15]
       self._parse_bytes('internal temperature', 2, 100.0, bytes, info)
       return info
@@ -195,6 +218,27 @@ class USBRead(object):
       self._parse_bytes('external humidity', 12, 100.0, bytes, info)
       return info
 
+    if info['firmware'][:16] == 'TEMPer2_M12_V1.3':
+      info['firmware'] = info['firmware'][:16]
+      self._parse_bytes('internal temperature', 2, 256.0, bytes, info)
+      self._parse_bytes('external temperature', 4, 256.0, bytes, info)
+      return info
+    if info['firmware'][:12] in [ 'TEMPer2_V3.7', 'TEMPer2_V3.9']:
+      info['firmware'] = info['firmware'][:12]
+      #Bytes 3-4 hold the device temp, divide by 100
+      self._parse_bytes('internal temperature', 2, 100.0, bytes, info, self.verbose)
+      #Bytes 11-12 hold the external temp, divide by 100
+      self._parse_bytes('external temperature', 10, 100.0, bytes, info, self.verbose)
+      return info
+    if info['firmware'][:16] == 'TEMPerHUM_V3.9':
+      info['firmware'] = info['firmware'][:16]
+      #Bytes 3-4 hold the device temp, divide by 100
+      self._parse_bytes('internal temperature', 2, 100.0, bytes, info, self.verbose)
+      #Bytes 11-12 hold the external temp, divide by 100
+      self._parse_bytes('external temperature', 10, 100.0, bytes, info, self.verbose)
+      #Bytes 5-6 hold the device humidity, divide by 100
+      self._parse_bytes('internal humidity', 4, 100.0, bytes, info)
+      return info
     info['error'] = 'Unknown firmware %s: %s' % (info['firmware'],
                                                  binascii.hexlify(bytes))
     return info
@@ -279,6 +323,8 @@ class Temper(object):
       return True
     if vendorid == 0x1a86 and productid == 0x5523:
       return True
+    if vendorid == 0x1a86 and productid == 0xe025:
+      return True
 
     # The id is not known to this program.
     return False
@@ -332,7 +378,7 @@ class Temper(object):
       return '- -'
     degC = info[name]
     degF = degC * 1.8 + 32.0
-    return '%.1fC %.1fF' % (degC, degF)
+    return '%.2fC %.2fF' % (degC, degF)
 
   def _add_humidity(self, name, info):
     '''Helper method to add the humidity to a string. If no sensor data is
@@ -409,6 +455,9 @@ class Temper(object):
     return 0
 
 
-if __name__ == "__main__":
+def main():
   temper = Temper()
   sys.exit(temper.main())
+
+if __name__ == "__main__":
+  main()

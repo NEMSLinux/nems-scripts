@@ -15,7 +15,7 @@ def main():
   s.connect(socket_path)
 
   # Write command to socket
-  s.send("GET " + query + "\n")
+  s.send(('GET ' + query + '\n').encode())
 
   # Important: Close sending direction. That way
   # the other side knows we are finished.
@@ -23,15 +23,15 @@ def main():
 
   # Now read the answer
   answer = s.recv(100000000)
-  result = answer.count('\n')
+  result = answer.count(('\n').encode())
 
   # Subtract one to accommodate the header output on line 1
   result = (result-1)
-  print result
+  print(result)
 
   # Parse the answer into a table (a list of lists)
 #  table = [ line.split(';') for line in answer.split('\n')[:-1] ]
-#  print table
+#  print(table)
 
 if __name__ == '__main__':
   main()

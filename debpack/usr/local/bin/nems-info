@@ -205,7 +205,7 @@ elif [[ $COMMAND == "hwid" ]]; then
     head -1 /proc/self/cgroup|cut -d/ -f3 | md5sum | cut -d"-" -f1 -
   # ODROID-N2
   elif (( $platform >= 15 )) && (( $platform <= 16 )); then
-    cat /proc/cpuinfo | grep Serial |  printf '%s' $(cut -n -d ' ' -f 2) | md5sum | cut -d"-" -f1 -
+    /sbin/ifconfig end0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # NANOPI M4
   elif (( $platform == 67 )) || (( $platform == 68 )); then
     cat /proc/cpuinfo | grep Serial |  printf '%s' $(cut -n -d ' ' -f 2) | md5sum | cut -d"-" -f1 -

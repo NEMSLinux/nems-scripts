@@ -13,6 +13,8 @@ while (!file_exists('/var/log/nems/hw_model')) {
   if ($v == 6) die('Timed out waiting for hw_model');
 }
 
+sleep(30); // Pause for 30 seconds to allow network to come ready in case this is an @reboot cron
+
 $v=0;
 $socket=shell_exec('/usr/local/bin/nems-info socket');
 $socketstatus=shell_exec('/usr/local/bin/nems-info socketstatus');

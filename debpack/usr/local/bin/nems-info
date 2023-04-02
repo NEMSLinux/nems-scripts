@@ -224,6 +224,9 @@ elif [[ $COMMAND == "hwid" ]]; then
   # Khadas VIM3
   elif (( $platform == 120 )) || (( $platform == 121 )); then
     /sbin/ifconfig $(/usr/local/bin/nems-info nic) | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
+  # Indiedroid Nova
+  elif (( $platform >= 200 )) && (( $platform <= 202 )); then
+    /sbin/ifconfig $(/usr/local/bin/nems-info nic) | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   fi
 
 elif [[ $COMMAND == "speedtest" ]]; then

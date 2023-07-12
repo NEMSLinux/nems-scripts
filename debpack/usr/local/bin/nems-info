@@ -149,17 +149,17 @@ elif [[ $COMMAND == "nemsveravail" ]]; then
 elif [[ $COMMAND == "users" ]]; then
   export USERCOUNT=`/usr/bin/users | /usr/bin/wc -w`
   if [ $USERCOUNT -eq 1 -o $USERCOUNT -eq -1 ]
-		then
-			echo $USERCOUNT user
-		else
-			echo $USERCOUNT users
-	fi
+                then
+                        echo $USERCOUNT user
+                else
+                        echo $USERCOUNT users
+        fi
 
 # Output disk usage in percent
 elif [[ $COMMAND == "diskusage" ]]; then
   getPlatform
   # Docker
-  if (( $platform == 21 )); then 
+  if (( $platform == 21 )); then
     df -hl /home | awk '/^overlay/ { sum+=$5 } END { print sum }'
   # Not Docker
   else
@@ -186,34 +186,38 @@ elif [[ $COMMAND == "hwid" ]]; then
   if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( $platform <= 199 )); then
     cat /proc/cpuinfo | grep Serial |  printf '%s' $(cut -n -d ' ' -f 2) | md5sum | cut -d"-" -f1 -
   # Pine64 Devices
-  elif (( $platform >= 40 )) && (( $platform <= 49 )); then 
+  elif (( $platform >= 40 )) && (( $platform <= 49 )); then
     /sbin/ifconfig eth0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # ODROID C0/C1/C1+
-  elif (( $platform == 10 )); then 
+  elif (( $platform == 10 )); then
     /sbin/ifconfig eth0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # ODROID XU3/XU4
-  elif (( $platform == 11 )); then 
+  elif (( $platform == 11 )); then
     /sbin/ifconfig eth0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # Amazon Web Services (Use Elastic Network Interfaces to prevent HWID changing upon stop/start of EC2 Instance!)
-  elif (( $platform == 22 )); then 
+  elif (( $platform == 22 )); then
     /sbin/ifconfig eth0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # Virtual Appliance
-  elif (( $platform == 20 )); then 
+  elif (( $platform == 20 )); then
     /sbin/ifconfig $(/usr/local/bin/nems-info nic) | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # Docker
-  elif (( $platform == 21 )); then 
+  elif (( $platform == 21 )); then
     head -1 /proc/self/cgroup|cut -d/ -f3 | md5sum | cut -d"-" -f1 -
   # ODROID-N2
   elif (( $platform >= 15 )) && (( $platform <= 16 )); then
-    /sbin/ifconfig end0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
+    if [[ -e /sys/class/net/end0/operstate ]]; then
+      /sbin/ifconfig end0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
+    else
+      /sbin/ifconfig eth0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
+    fi
   # NANOPI M4
   elif (( $platform == 67 )) || (( $platform == 68 )); then
     cat /proc/cpuinfo | grep Serial |  printf '%s' $(cut -n -d ' ' -f 2) | md5sum | cut -d"-" -f1 -
   # Tinker Board / S
-  elif (( $platform == 100 )) || (( $platform == 101 )); then 
+  elif (( $platform == 100 )) || (( $platform == 101 )); then
     /sbin/ifconfig $(/usr/local/bin/nems-info nic) | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # ODROID-C2
-  elif (( $platform == 12 )); then 
+  elif (( $platform == 12 )); then
     /sbin/ifconfig $(/usr/local/bin/nems-info nic) | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | md5sum | cut -d"-" -f1 -
   # Orange Pi Zero
   elif (( $platform == 32 )); then
@@ -560,6 +564,8 @@ elif [[ $COMMAND == "cloudauth" ]]; then
   data=$(curl -s -F "hwid=$hwid" -F "osbkey=$osbkey" -F "query=status" https://cloud.nemslinux.com/api/offsite-backup-checkin.php)
   if [[ $data == '1' ]]; then # this account passes authentication
     echo 1
+  elif [[ $data == '' ]]; then # didn't get an answer from the API. Internet down?
+    echo 3
   else
     echo 0
   fi

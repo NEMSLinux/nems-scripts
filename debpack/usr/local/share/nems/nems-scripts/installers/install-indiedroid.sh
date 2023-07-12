@@ -8,12 +8,17 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 platform=$(/usr/local/bin/nems-info platform)
-if (( $platform == 120 )) || (( $platform == 121 )); then
+if (( $platform >= 200 )) && (( $platform <= 202 )); then
 
 echo ""
-echo "Khadas VIM3 Detected. Installing NEMS Linux to integrated eMMC."
+echo "Please run the following command before installing NEMS Linux: sudo nems-update"
 echo ""
-echo "This will destroy everything you already have on your VIM3 eMMC."
+exit
+
+echo ""
+echo "Indiedroid Nova Detected. Installing NEMS Linux to integrated eMMC."
+echo ""
+echo "This will destroy everything you already have on your Nova eMMC."
 
 read -r -p "Are you sure? [y/N] " response
 if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]
@@ -24,7 +29,7 @@ else
   exit
 fi
 
-# The block device corresponding with the VIM3 eMMC drive
+# The block device corresponding with the eMMC drive
 DEV_EMMC=/dev/mmcblk0
 
 echo "Start backup u-boot default"
@@ -164,12 +169,12 @@ echo "*     NEMS Linux installed to eMMC     *"
 echo "****************************************"
 
 echo ""
-echo "Remove your MicroSD card now and power on the Khadas VIM3."
+echo "Remove your MicroSD card now and power on the Indiedroid Nova."
 echo ""
 halt
 
 else
-  echo "This installer is for VIM3 only. Aborting."
+  echo "This installer is for Indiedroid Nova only. Aborting."
 fi
 
 echo ""

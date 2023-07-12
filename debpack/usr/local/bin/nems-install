@@ -13,5 +13,11 @@ if (( $platform == 120 )) || (( $platform == 121 )); then
   exit
 fi
 
+# Indiedroid Nova - install to eMMC
+if (( $platform >= 200 )) && (( $platform <= 202 )); then
+  /usr/local/share/nems/nems-scripts/installers/install-indiedroid.sh
+  exit
+fi
+
 echo "There are no installers available for this platform."
 echo ""

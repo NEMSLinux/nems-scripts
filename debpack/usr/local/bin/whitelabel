@@ -7,7 +7,7 @@ if [[ $1 == "" ]]; then
   echo Usage: $0 [code]
   exit 1
 fi
-whitelabel=$(wget --server-response https://nemslinux.com/whitelabel/$1 -O /tmp/whitelabel.tar.gz 2>&1| grep -c 'HTTP/1.1 200 OK')
+whitelabel=$(wget --server-response https://nemslinux.com/api/whitelabel/$1 -O /tmp/whitelabel.tar.gz 2>&1| grep -c 'HTTP/1.1 200 OK')
 
 if [ $whitelabel == 1 ]; then
   echo Found Whitelabel Account

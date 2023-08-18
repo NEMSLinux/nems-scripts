@@ -1,0 +1,41 @@
+#!/bin/bash
+echo NEMS Linux Whitelabel Service
+echo For use by licensed enterprise customers only. Not for general use.
+echo ""
+
+if [[ $1 == "" ]]; then
+  echo Usage: $0 [code]
+  exit 1
+fi
+whitelabel=$(wget --server-response https://nemslinux.com/whitelabel/$1 -O /tmp/whitelabel.tar.gz 2>&1| grep -c 'HTTP/1.1 200 OK')
+
+if [ $whitelabel == 1 ]; then
+  echo Found Whitelabel Account
+  cd /tmp
+  tar -xf whitelabel.tar.gz
+
+  # Rename previous whitelabel folder, if one exists
+  if [[ -e /usr/local/share/whitelabel~/ ]]; then
+    rm -rf /usr/local/share/whitelabel~/
+  fi
+  if [[ -e /usr/local/share/whitelabel/ ]]; then
+    mv /usr/local/share/whitelabel/ /usr/local/share/whitelabel~/
+  fi
+  mv /tmp/whitelabel/ /usr/local/share/
+
+  # Replace cockpit branding
+  rm -rf /usr/share/cockpit/branding/debian/
+  ln -s /usr/local/share/whitelabel/ /usr/share/cockpit/branding/debian
+
+  rm /tmp/whitelabel.tar.gz
+
+  if [[ -e /usr/local/share/whitelabel/ ]]; then
+    echo Done. Whitelabel has been activated.
+  else
+    echo Failed. Something went wrong. Please let the developers know.
+  fi
+
+else
+  echo Failed. Did you use a correct code? Is your Whitelabel Account up to date?
+  exit 1
+fi

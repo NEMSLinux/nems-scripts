@@ -37,6 +37,8 @@ else
     done
   fi
 
+  export DEBIAN_FRONTEND=noninteractive
+
   apt-get update
 
   git config --global --unset http.postBuffer

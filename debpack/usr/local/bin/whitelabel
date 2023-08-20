@@ -2,6 +2,10 @@
 echo NEMS Linux Whitelabel Service
 echo For use by licensed enterprise customers only. Not for general use.
 echo ""
+if [[ $EUID -ne 0 ]]; then
+  echo "ERROR: This script must be run as root" 2>&1
+  exit 1
+fi
 
 if [[ $1 == "" ]]; then
   echo Usage: $0 [code]
@@ -12,19 +16,23 @@ whitelabel=$(wget --server-response https://nemslinux.com/api/whitelabel/$1 -O /
 if [ $whitelabel == 1 ]; then
   echo Found Whitelabel Account
   cd /tmp
-  tar -xf whitelabel.tar.gz
+  tar -xzf whitelabel.tar.gz
 
   # Rename previous whitelabel folder, if one exists
-  if [[ -e /usr/local/share/whitelabel~/ ]]; then
-    rm -rf /usr/local/share/whitelabel~/
+  if [[ -e /usr/local/share/whitelabel~ ]]; then
+    rm -rf /usr/local/share/whitelabel~
   fi
-  if [[ -e /usr/local/share/whitelabel/ ]]; then
-    mv /usr/local/share/whitelabel/ /usr/local/share/whitelabel~/
+  if [[ -e /usr/local/share/whitelabel ]]; then
+    mv /usr/local/share/whitelabel /usr/local/share/whitelabel~
   fi
-  mv /tmp/whitelabel/ /usr/local/share/
+  mv /tmp/whitelabel /usr/local/share/
 
   # Replace cockpit branding
-  rm -rf /usr/share/cockpit/branding/debian/
+  if [[ -d /usr/share/cockpit/branding/debian ]]; then
+    rm -rf /usr/share/cockpit/branding/debian
+  elif [[ -e /usr/share/cockpit/branding/debian ]]; then
+    rm /usr/share/cockpit/branding/debian
+  fi
   ln -s /usr/local/share/whitelabel/ /usr/share/cockpit/branding/debian
 
   rm /tmp/whitelabel.tar.gz

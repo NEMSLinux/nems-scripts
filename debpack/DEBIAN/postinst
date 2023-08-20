@@ -9,3 +9,13 @@ if ! grep -q "%nagios ALL=NOPASSWD: /usr/bin/vcgencmd" /etc/sudoers; then
 fi
 
 ############################################################################################################
+
+# DHTxx support
+  # 'board' module
+  pip3 install adafruit-blinka
+  # dht module
+  pip3 install adafruit-circuitpython-dht
+
+  # Setup User access
+  adduser nagios gpio
+  adduser nemsadmin gpio

@@ -8,17 +8,57 @@ import json
 
 if len(sys.argv) > 1:
 
+        # Get the GPIO pin number from CLI or use default
+        if len(sys.argv) == 2:
+                # Default
+                pin = '4'
+        else:
+                pin = sys.argv[2]
+
         # Initialize the dht device, with data pin connected to pin 4
         if (sys.argv[1]) == '11':
-                dhtDevice = adafruit_dht.DHT11(board.D4, use_pulseio=False)
+                if pin == '18':
+                  dhtDevice = adafruit_dht.DHT11(board.D18, use_pulseio=True)
+                elif pin == '4':
+                  dhtDevice = adafruit_dht.DHT11(board.D4, use_pulseio=False)
+                else:
+                  print("Invalid Pin: " + pin)
+                  exit(1)
         elif (sys.argv[1]) == '22':
-                dhtDevice = adafruit_dht.DHT22(board.D4, use_pulseio=False)
+                if pin == '18':
+                  dhtDevice = adafruit_dht.DHT22(board.D18, use_pulseio=True)
+                elif pin == '4':
+                  dhtDevice = adafruit_dht.DHT22(board.D4, use_pulseio=False)
+                else:
+                  print("Invalid Pin: " + pin)
+                  exit(1)
 
-        temperature_c = dhtDevice.temperature
-        temperature_f = temperature_c * (9 / 5) + 32
-        humidity = dhtDevice.humidity
+        loop=0
+        while True:
+          try:
+            temperature_c = round(dhtDevice.temperature,2)
+            temperature_f = round((temperature_c * (9/5) + 32),2)
+            humidity = round(dhtDevice.humidity,2)
+            print(json.dumps({"dht": (sys.argv[1]), "c": temperature_c, "f": temperature_f, "h": humidity}))
+            dhtDevice.exit()
+            break
 
-        print(json.dumps({"dht": (sys.argv[1]), "c": temperature_c, "f": temperature_f, "h": humidity}))
+          except RuntimeError as error:
+            time.sleep(2.0)
+            continue
+
+          if loop == 5:
+            break
+
+          loop = loop + 1
 
 else:
-        print("Usage: " + (sys.argv[0]) + " [11|22]")
+        print("")
+        print("Usage: " + (sys.argv[0]) + " [VERSION] [GPIO PIN]")
+        print("")
+        print("Valid Versions: 11 - DHT11")
+        print("                22 - DHT22/AM2302")
+        print("")
+        print("Valid Pins:  4 - Older sensors, usually without PCB, Default")
+        print("            18 - Newer sensors, often with PCB")
+        print("")

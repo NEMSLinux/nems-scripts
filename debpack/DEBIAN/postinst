@@ -1,4 +1,6 @@
 #!/bin/bash
+platform=$(/usr/local/bin/nems-info platform)
+
 npm install -g speed-cloudflare-cli
 
 ## Allow nagios and users in nagios group (your NEMS user) to run root nems-info commands without a password
@@ -10,7 +12,8 @@ fi
 
 ############################################################################################################
 
-# DHTxx support
+# DHTxx support for Raspberry Pi
+if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( $platform <= 199 )); then
   # 'board' module
   pip3 install adafruit-blinka
   # dht module
@@ -19,3 +22,7 @@ fi
   # Setup User access
   adduser nagios gpio
   adduser nemsadmin gpio
+
+  # Avoid errors if the user is already part of the GPIO group
+  echo ""
+fi

@@ -645,7 +645,7 @@ elif [[ $COMMAND == "pivoyager" ]]; then
   fi
 
 elif [[ $COMMAND == "dht11" ]]; then
-  dht=$(/usr/local/share/nems/nems-scripts/dhtxx 11 2> /dev/null)
+  dht=$(/usr/local/share/nems/nems-scripts/dhtxx 11 $VARIABLE 2> /dev/null)
   if [[ $dht != '' ]]; then
     echo $dht
   else
@@ -653,7 +653,7 @@ elif [[ $COMMAND == "dht11" ]]; then
   fi
 
 elif [[ $COMMAND == "dht22" ]]; then
-  dht=$(/usr/local/share/nems/nems-scripts/dhtxx 22 2> /dev/null)
+  dht=$(/usr/local/share/nems/nems-scripts/dhtxx 22 $VARIABLE 2> /dev/null)
   if [[ $dht != '' ]]; then
     echo $dht
   else

@@ -124,7 +124,7 @@ function queryLivestatus($query) {
 }
 
             $hosts = array();
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 
 if ($in_notification_period == 1) {
 $query = <<<"EOQ"
@@ -161,7 +161,7 @@ EOQ;
             }
             asort($hosts);
 
-            while ( list(, $row) = each($hosts) ) {
+            foreach ($hosts as $row) {
 		$nems->down[] = array('hostname'=>$row[0],'alias'=>$row[1]);
             }
 
@@ -172,7 +172,7 @@ EOQ;
             #### HOSTS
 
             reset($custom_filters);
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 $query = <<<"EOQ"
 GET hosts
 Filter: $filter
@@ -196,7 +196,7 @@ EOQ;
             #### SERVICES
 
             reset($custom_filters);
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 $query = <<<"EOQ"
 GET services
 Filter: $filter
@@ -227,7 +227,7 @@ EOQ;
 
             reset($custom_filters);
             $services = array();
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 
 if ($in_notification_period == 1) {
 $query = <<<"EOQ"
@@ -270,7 +270,7 @@ EOQ;
             }
             usort($services, "sort_by_state");
 
-            while ( list(, $row) = each($services) ) {
+            foreach ($services as $row) {
                 if ($row[2] == 2) {
                     $class = "critical";
                 } elseif ($row[2] == 1) {

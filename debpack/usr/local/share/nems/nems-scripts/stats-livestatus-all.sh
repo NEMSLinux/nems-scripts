@@ -122,7 +122,7 @@ function queryLivestatus($query) {
 }
 
             $hosts = array();
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 
 $query = <<<"EOQ"
 GET hosts
@@ -140,7 +140,7 @@ EOQ;
             }
             asort($hosts);
 
-            while ( list(, $row) = each($hosts) ) {
+            foreach ($hosts as $row) {
                 // services with info
                 $services = array();
                 if (is_array($row[9])) foreach ($row[9] as $service) {

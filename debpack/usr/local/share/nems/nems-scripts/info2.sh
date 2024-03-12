@@ -266,7 +266,7 @@ function sort_by_state($a, $b) {
 
 
             $hosts = array();
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 
 if ($in_notification_period == 1) {
 $query = <<<"EOQ"
@@ -309,7 +309,7 @@ EOQ;
             $nems->livestatus->hosts->total = 0;
 
             reset($custom_filters);
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 $query = <<<"EOQ"
 GET hosts
 Filter: $filter
@@ -346,7 +346,7 @@ EOQ;
             $nems->livestatus->services->total = 0;
 
             reset($custom_filters);
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 $query = <<<"EOQ"
 GET services
 Filter: $filter
@@ -379,7 +379,7 @@ EOQ;
 
             reset($custom_filters);
             $services = array();
-            while ( list(, $filter) = each($custom_filters) ) {
+            foreach ($custom_filters as $filter) {
 
 if ($in_notification_period == 1) {
 $query = <<<"EOQ"

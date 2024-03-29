@@ -170,7 +170,7 @@ else
       else
         echo Username is invalid. Please try again.
       fi
-    else 
+    else
       echo Username must be all lowercase. Please try again.
     fi
   done
@@ -193,7 +193,7 @@ else
   echo ""
 
   # In case this is a re-initialization, clear the init file (remove old login), then add this user
-  echo "">/var/www/htpasswd && echo $password | /usr/bin/htpasswd -B -c -i /var/www/htpasswd $username
+  echo "">/var/www/htpasswd && echo "${password}" | /usr/bin/htpasswd -B -c -i /var/www/htpasswd $username
 
   # Create the Linux user
   adduser --disabled-password --gecos "" $username
@@ -221,7 +221,21 @@ else
   ###############
 
   # Set the user password
-  echo -e "$password\n$password" | passwd $username >$tmpdir/init 2>&1
+  echo "$username:$password" | chpasswd > $tmpdir/init 2>&1
+
+  # Check the exit status of passwd command
+  if [ $? -eq 0 ]; then
+    echo "Password set successfully."
+  else
+    echo
+    echo "*****************************"
+    echo "** Failed to set password. **"
+    echo "*****************************"
+    echo "To ensure your system is bootable, I've set the password to: temp123"
+    echo "Please change this promptly using: sudo nems-passwd"
+    echo -e "temp123\ntemp123" | passwd $username >$tmpdir/init 2>&1
+    echo
+  fi
 
   # Reset the RPi-Monitor user
   cp /root/nems/nems-migrator/data/rpimonitor/daemon.conf /etc/rpimonitor

@@ -50,8 +50,23 @@ else
   /bin/sed -i~ '/$username/d' /var/www/htpasswd
   echo $password | /usr/bin/htpasswd -B -c -i /var/www/htpasswd $username
 
+
   # Set the user password
-  echo -e "$password\n$password" | passwd $username >$tmpdir/init 2>&1
+  echo "$username:$password" | chpasswd > $tmpdir/init 2>&1
+
+  # Check the exit status of passwd command
+  if [ $? -eq 0 ]; then
+    echo "Password set successfully."
+  else
+    echo
+    echo "*****************************"
+    echo "** Failed to set password. **"
+    echo "*****************************"
+    echo "To ensure your system is bootable, I've set the password to: temp123"
+    echo "Please change this promptly using: sudo nems-passwd"
+    echo -e "temp123\ntemp123" | passwd $username >$tmpdir/init 2>&1
+    echo
+  fi
 
   # Samba config
     # Change Samba User

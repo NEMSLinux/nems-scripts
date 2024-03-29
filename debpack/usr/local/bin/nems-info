@@ -12,13 +12,15 @@ me=`basename "$0"`
 # Get the username even if sudo
 user=$(whoami | awk '{print $1}')
 
-cachedir=~/.nems_cache/
-if [[ $user != 'www-data' ]] && [[ ! -e $cachedir ]]; then
+if [[ -d ~ ]]; then
+  cachedir=~/.nems_cache/
+else
+  cachedir=/tmp/.nems_cache/
+fi
+if [[ ! -e $cachedir ]]; then
   mkdir -p $cachedir
   chmod 755 $cachedir
   chown -R $user:$user $cachedir
-else
-  cachedir=/tmp/
 fi
 
 # Some functions

@@ -5,7 +5,7 @@ if ($user != 'root') die('You cannot run this program as ' . $user . '. Please u
 
   echo 'Sending a webhook test... ';
     $currentissueshead = 'NEMS Linux Test Notification';
-    $nemsstate = $state = $currentissues = 'Testing';
+    $nemsstate = $state = $currentissues = 'This is a webhook test from NEMS Linux. Your webhook is working correctly and you can receive state notifications from your NEMS Server. Congratulations!';
     $fieldsarray[] = array(
       'name' => 'Webhook Test',
       'value' => 'Successful.',

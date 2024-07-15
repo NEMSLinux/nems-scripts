@@ -12,6 +12,14 @@ fi
 
 ############################################################################################################
 
+# Ensure Python is not set to Externally Managed
+for pythondir in /usr/lib/python*/; do
+  if [ -f "$pythondir/EXTERNALLY-MANAGED" ]; then
+    rm "$pythondir/EXTERNALLY-MANAGED"
+    echo "$pythondir was set to Externally managed. Changed."
+  fi
+done
+
 # DHTxx support for Raspberry Pi
 if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( $platform <= 199 )); then
   # 'board' module

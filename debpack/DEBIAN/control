@@ -4,7 +4,7 @@ Priority: required
 Section: main
 Maintainer: NEMS Linux <nems@category5.tv>
 Architecture: all
-Version: 1.6.072
+Version: 1.6.073
 Provides: nems-scripts
 Description: NEMS Scripts
 Depends: apt-show-versions, memtester, npm, libgpiod2, python3-pip, netcat | netcat-traditional

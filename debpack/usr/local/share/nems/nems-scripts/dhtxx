@@ -1,64 +1,220 @@
 #!/usr/bin/env python3
 
+"""
+DHT Sensor Output 2.0
+======================
+Author: Robbie Ferguson <robbie@category5.tv>
+Platform: NEMS Linux - https://nemslinux.com/
+
+Description:
+-------------
+This Python script reads temperature and humidity data from DHT11 or DHT22 sensors connected to Raspberry Pi GPIO pins.
+It automatically detects which GPIO pin the sensor is connected to, and retries several times if no sensor is detected initially.
+The script uses threading with a timeout to avoid hanging in cases where the sensor or pin is unresponsive.
+
+Features:
+---------
+- Supports both DHT11 and DHT22 (AM2302) sensors.
+- Auto-detection of the GPIO pin connected to the sensor (Pins 18 and 4 by default).
+- Threading with timeout to prevent the program from freezing on sensor read errors.
+- Automatic retries on sensor detection failure or invalid readings.
+- Outputs temperature (Celsius and Fahrenheit) and humidity as a JSON object.
+
+Usage:
+------
+python3 dht_sensor.py [SENSOR_TYPE] [GPIO_PIN]
+
+SENSOR_TYPE:
+- 11: DHT11
+- 22: DHT22 (or AM2302)
+
+GPIO_PIN (optional):
+- 4: Older sensors without PCB (default)
+- 18: Newer sensors with PCB
+
+Example:
+--------
+python3 dht_sensor.py 22 18
+
+Dependencies:
+-------------
+- Adafruit CircuitPython DHT library
+- Adafruit Blinka
+- Python 3.x
+
+"""
+
 import sys
 import time
 import board
 import adafruit_dht
 import json
+import threading
+import queue
 
-if len(sys.argv) > 1:
+# Check if the argument is '11' or '22'
+sensor_type = sys.argv[1] if len(sys.argv) > 1 else None
+if sensor_type not in ["11", "22"]:
+    print("Invalid sensor type. Use '11' for DHT11 or '22' for DHT22.")
+    sys.exit(1)
 
-        # Get the GPIO pin number from CLI or use default
-        if len(sys.argv) == 2:
-                # Default
-                pin = '4'
+sensor_string = "DHT11" if sensor_type == "11" else "DHT22"
+
+# Pin mapping
+pin_mapping = {
+    18: board.D18,
+    4: board.D4,
+}
+
+def detect_sensor_on_pin(pin, result_queue):
+    """Function to attempt reading sensor data with error handling."""
+    try:
+        if sensor_type == "11":
+            dht_sensor = adafruit_dht.DHT11(pin_mapping[pin])
         else:
-                pin = sys.argv[2]
+            dht_sensor = adafruit_dht.DHT22(pin_mapping[pin])
 
-        # Initialize the dht device, with data pin connected to pin 4
-        if (sys.argv[1]) == '11':
-                if pin == '18':
-                  dhtDevice = adafruit_dht.DHT11(board.D18, use_pulseio=True)
-                elif pin == '4':
-                  dhtDevice = adafruit_dht.DHT11(board.D4, use_pulseio=False)
-                else:
-                  print("Invalid Pin: " + pin)
-                  exit(1)
-        elif (sys.argv[1]) == '22':
-                if pin == '18':
-                  dhtDevice = adafruit_dht.DHT22(board.D18, use_pulseio=True)
-                elif pin == '4':
-                  dhtDevice = adafruit_dht.DHT22(board.D4, use_pulseio=False)
-                else:
-                  print("Invalid Pin: " + pin)
-                  exit(1)
+        # Try to read data from the sensor
+        dht_sensor.temperature
+        result_queue.put(True)  # Put True if the sensor was detected
+    except RuntimeError as e:
+        # Check if the error is related to pin access
+        if str(e).startswith("Unable to set line"):
+            result_queue.put("pin_error")  # Signal pin access error
+        else:
+            result_queue.put(False)  # Any other RuntimeError
+    except Exception as e:
+        # Catch any other exception and log it
+        print(f"Error in thread while detecting sensor on pin {pin}: {e}")
+        result_queue.put(False)
+    finally:
+        try:
+            dht_sensor.exit()  # Ensure the sensor is exited correctly
+        except:
+            pass
 
-        loop=0
-        while True:
-          try:
-            temperature_c = round(dhtDevice.temperature,2)
-            temperature_f = round((temperature_c * (9/5) + 32),2)
-            humidity = round(dhtDevice.humidity,2)
-            print(json.dumps({"dht": (sys.argv[1]), "c": temperature_c, "f": temperature_f, "h": humidity}))
-            dhtDevice.exit()
-            break
+def check_sensor_on_pin(pin, timeout=5):
+    """Check if the sensor is active on the given pin with a timeout."""
+    result_queue = queue.Queue()
+    sensor_thread = threading.Thread(target=detect_sensor_on_pin, args=(pin, result_queue))
+    sensor_thread.start()
 
-          except RuntimeError as error:
-            time.sleep(2.0)
-            continue
+    # Wait for the thread to finish with a timeout
+    sensor_thread.join(timeout)
 
-          if loop == 5:
-            break
+    if sensor_thread.is_alive():
+        # If the thread is still alive after the timeout, terminate it
+        print(f"Timeout occurred while checking pin {pin}.")
+        return False
 
-          loop = loop + 1
+    # Get the result from the queue (True if detected, False otherwise)
+    if not result_queue.empty():
+        result = result_queue.get()
+    else:
+        result = False  # Default to False if the queue is empty
 
+    if result == "pin_error":
+        print(f"Unable to set line {pin} to input. Cleaning up and retrying...")
+        try:
+            sensor_thread.join()  # Ensure the thread has finished
+        except:
+            pass
+        return False
+
+    return result
+
+def auto_detect_pin(timeout=5, retries=5, retry_delay=5):
+    """Automatically detects which pin has the active sensor, retries several times before giving up."""
+    pins_to_check = [18, 4]
+    for attempt in range(retries):
+        for pin in pins_to_check:
+            if check_sensor_on_pin(pin, timeout=timeout):
+                return pin
+        print(f"Retrying sensor detection... Attempt {attempt + 1}/{retries}")
+        time.sleep(retry_delay)  # Delay before retrying (increased to 5 seconds)
+    return None
+
+# Auto-detect active pin with retries
+active_pin = auto_detect_pin(timeout=5, retries=5, retry_delay=5)
+if active_pin is not None:
+    pin = active_pin
 else:
-        print("")
-        print("Usage: " + (sys.argv[0]) + " [VERSION] [GPIO PIN]")
-        print("")
-        print("Valid Versions: 11 - DHT11")
-        print("                22 - DHT22/AM2302")
-        print("")
-        print("Valid Pins:  4 - Older sensors, usually without PCB, Default")
-        print("            18 - Newer sensors, often with PCB")
-        print("")
+    print("No sensor detected on any of the pins after multiple attempts.")
+    sys.exit(1)  # Safely exit if no sensor is detected
+
+# Initialize the DHT sensor based on the detected pin
+try:
+    if sensor_type == "11":
+        dhtDevice = adafruit_dht.DHT11(pin_mapping[pin], use_pulseio=False)
+    else:
+        dhtDevice = adafruit_dht.DHT22(pin_mapping[pin], use_pulseio=False)
+except Exception as e:
+    print(f"Error initializing sensor: {e}")
+    sys.exit(1)
+
+def read_sensor(q):
+    """Reads the sensor data and puts the results in a queue."""
+    try:
+        temperature_c = dhtDevice.temperature
+        humidity = dhtDevice.humidity
+        if temperature_c is None or humidity is None:
+            q.put((None, None))  # Return None if no data was received
+        else:
+            q.put((temperature_c, humidity))  # Put results in the queue
+    except RuntimeError as error:
+        print(f"Runtime error while reading sensor: {error}")
+        q.put((None, None))  # Put None if an error occurs
+
+loop = 0
+max_attempts = 5
+timeout_duration = 5  # 5 seconds timeout
+
+while loop < max_attempts:
+    q = queue.Queue()  # Use queue for communication
+    sensor_thread = threading.Thread(target=read_sensor, args=(q,))
+    sensor_thread.start()
+
+    # Wait for thread to finish
+    sensor_thread.join(timeout=timeout_duration)
+
+    if sensor_thread.is_alive():
+        print("Timeout while reading from the sensor.")
+        sensor_thread.join()  # Ensure thread has completed
+        loop += 1
+        time.sleep(2.0)
+        continue
+
+    # Retrieve the results from the queue
+    temperature_c, humidity = q.get()
+
+    # Check for valid readings
+    if temperature_c is None or temperature_c == 0 or humidity is None or humidity == 0:
+        print("Invalid readings, retrying...")
+        loop += 1
+        time.sleep(2.0)
+        continue
+
+    # Process valid readings
+    temperature_c = round(temperature_c, 2)
+    temperature_f = round((temperature_c * 9/5) + 32, 2)
+    humidity = round(humidity, 2)
+
+    # Output the results
+    print(json.dumps({
+        "dht": sensor_type,
+        "pin": pin,
+        "c": temperature_c,
+        "f": temperature_f,
+        "h": humidity
+    }))
+
+    # Exit the sensor after successful read
+    dhtDevice.exit()
+    break  # Exit the loop if everything is successful
+
+if loop >= max_attempts:
+    print("Failed to read from the sensor after multiple attempts.")
+    try:
+        dhtDevice.exit()  # Ensure the sensor exits properly in case of failure
+    except:
+        pass

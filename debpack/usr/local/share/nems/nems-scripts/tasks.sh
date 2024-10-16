@@ -18,6 +18,7 @@ switch($argv[1]) {
         $platform['id'] = shell_exec('/usr/local/bin/nems-info platform');
         $platform['data'] = @json_decode(@file_get_contents('https://cloud.nemslinux.com/api/platform/' . $platform['id']));
         if (isset($platform['data']->current_ver) && floatval($platform['data']->current_ver) > 0) file_put_contents('/var/www/html/inc/ver-available.txt',trim($platform['data']->current_ver));
+        if (isset($platform['data']->global_current_ver) && floatval($platform['data']->global_current_ver) > 0) file_put_contents('/var/www/html/inc/ver-available-global.txt',trim($platform['data']->global_current_ver));
       break;
     }
     break;

@@ -147,6 +147,17 @@ elif [[ $COMMAND == "nemsveravail" ]]; then
     echo 0;
   fi
 
+# Output the global highest available NEMS version (update.sh generates this every day at midnight and at reboot)
+elif [[ $COMMAND == "nemsverglobavail" ]]; then
+  if [[ ! -f /var/www/html/inc/ver-available-global.txt ]]; then
+    /usr/local/share/nems/nems-scripts/tasks.sh update platform
+  fi
+  if [[ -f /var/www/html/inc/ver-available-global.txt ]]; then
+    /bin/cat /var/www/html/inc/ver-available.txt
+  else
+    echo 0;
+  fi
+
 # Output the number of users connected to server
 elif [[ $COMMAND == "users" ]]; then
   export USERCOUNT=`/usr/bin/users | /usr/bin/wc -w`

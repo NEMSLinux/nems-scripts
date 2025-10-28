@@ -64,6 +64,16 @@
    /usr/bin/mysql -u nconf -h 127.0.0.1 -pnagiosadmin -D nconf -e "UPDATE ConfigValues SET attr_value='Default Nagios' WHERE fk_id_attr = 1;"
  fi
 
+ # Following a Python upgrade, Python may switch back to the default of Externally Managed
+ # Ensure Python is not set to Externally Managed
+ for pythondir in /usr/lib/python*/; do
+   if [ -f "$pythondir/EXTERNALLY-MANAGED" ]; then
+     rm "$pythondir/EXTERNALLY-MANAGED"
+     echo "$pythondir was set to Externally managed. Changed."
+   fi
+ done
+
+
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then
 
   # Symlink python2 binary to python3 to prevent errors for scripts that call /usr/bin/python
@@ -121,6 +131,7 @@ if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.5'")}') )); then
   fi
 
   # Replace NEMS branding in Cockpit in case an update removes it
+  # Also remove dangerous default functionality from Cockpit if it exists
     /root/nems/nems-admin/build/171-cockpit
     /root/nems/nems-admin/build/999-cleanup
 

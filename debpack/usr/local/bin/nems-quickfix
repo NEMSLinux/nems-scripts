@@ -96,6 +96,25 @@ if [[ $proceed == 1 ]]; then
   # Reset the log each time quickfix is run
   date > /var/log/nems/nems-quickfix.log
 
+  # Update GPG key for NEMS repository
+  TRUSTED_GPG="/etc/apt/trusted.gpg.d/trusted.gpg"
+  KEY_URL="https://repos.nemslinux.com/nemslinux.gpg.key"
+
+  # Check if file exists
+  if [ ! -f "$TRUSTED_GPG" ]; then
+    echo "GPG file not found. Importing fresh key..."
+    wget -O - "$KEY_URL" | gpg --batch --yes --dearmor -o "$TRUSTED_GPG"
+  else
+    # Check if file is older than 90 days
+    if [ "$(find "$TRUSTED_GPG" -mtime +90)" ]; then
+      echo "GPG key is older than 90 days. Re-importing..."
+      wget -O - "$KEY_URL" | gpg --batch --yes --dearmor -o "$TRUSTED_GPG"
+    else
+      echo "GPG key is up to date. No action taken."
+    fi
+  fi
+
+
   for run in {1..2}
   do
 

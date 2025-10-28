@@ -37,6 +37,9 @@ else
     done
   fi
 
+  # Upgrade pip
+  pip install --upgrade pip
+
   export DEBIAN_FRONTEND=noninteractive
 
   apt-get update

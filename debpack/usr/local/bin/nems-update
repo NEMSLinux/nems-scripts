@@ -38,7 +38,7 @@ else
   fi
 
   # Upgrade pip
-  pip install --upgrade pip --root-user-action
+  pip install --upgrade pip --root-user-action=ignore
 
   export DEBIAN_FRONTEND=noninteractive
 

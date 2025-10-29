@@ -1,0 +1,420 @@
+#!/usr/bin/env bash
+# nems-userctl
+# Unified user management for NEMS Linux - https://nemslinux.com/
+# By Robbie Ferguson // Bald Nerd
+# Version 1.0 // October 29, 2025
+
+set -euo pipefail
+
+# ---- Config ----
+HTPASSWD_FILE="/var/www/htpasswd"
+DB_DIR="/usr/local/share/nems/database"
+DB_FILE="${DB_DIR}/users.db"
+SUPERADMIN_FILE="/usr/local/share/nems/superadmin_user"
+
+MANAGED_GROUPS=(sudo www-data nagios gpio netdev monit)
+
+# ---- Role map (extend here) ----
+declare -A ROLE_GROUPS
+ROLE_GROUPS[superadmin]="sudo www-data nagios gpio netdev monit"
+ROLE_GROUPS[admin]="sudo www-data nagios gpio netdev monit"
+ROLE_GROUPS[operator]="www-data nagios gpio netdev monit"
+ROLE_GROUPS[reporter]="www-data nagios"
+ROLE_GROUPS[viewer]="www-data"
+
+# Precedence for privilege checks (higher number = more privilege)
+declare -A ROLE_PREC=( [viewer]=1 [reporter]=2 [operator]=3 [admin]=4 [superadmin]=5 )
+
+# ---- Utils ----
+log(){ logger -t nems-userctl "$*"; }
+die(){ echo "ERROR: $*" >&2; log "ERROR: $*"; exit 1; }
+need_root(){ [[ ${EUID} -eq 0 ]] || die "Must run as root."; }
+now_epoch(){ date +%s; }
+
+check_bins(){
+  command -v useradd >/dev/null 2>&1 || die "useradd missing."
+  command -v usermod >/dev/null 2>&1 || die "usermod missing."
+  command -v userdel >/dev/null 2>&1 || die "userdel missing."
+  command -v chpasswd >/dev/null 2>&1 || die "chpasswd missing."
+  command -v smbpasswd >/dev/null 2>&1 || die "smbpasswd (samba) missing."
+  command -v htpasswd >/dev/null 2>&1 || die "htpasswd (apache2-utils) missing."
+  command -v sqlite3  >/dev/null 2>&1 || die "sqlite3 missing."
+}
+
+usage(){
+  cat <<EOF
+NEMS unified user management
+By Robbie Ferguson // Bald Nerd
+
+USAGE:
+  nems-userctl create   --user <name> [--role <role>] [--password-stdin | --password-file <path>] [--superadmin-create]
+  nems-userctl delete   --user <name> [--actor <name>]
+  nems-userctl set-role --user <name> --role <role> [--actor <name>]
+  nems-userctl set-pass --user <name> [--password-stdin | --password-file <path>] [--actor <name>]
+  nems-userctl info     --user <name> [--json]
+  nems-userctl list-roles
+
+ROLES:
+  $(printf '%s ' "${!ROLE_GROUPS[@]}")
+
+Password input:
+  --password-stdin             Read password from STDIN (recommended)
+  --password-file <path>       Read password from a file (single line)
+
+EOF
+}
+
+have_user(){ id -u "$1" >/dev/null 2>&1; }
+
+ensure_htpasswd(){
+  if [[ ! -e "$HTPASSWD_FILE" ]]; then
+    install -m 640 -o root -g www-data /dev/null "$HTPASSWD_FILE"
+  fi
+  chgrp www-data "$HTPASSWD_FILE" || true
+  chmod 640 "$HTPASSWD_FILE" || true
+}
+
+read_password(){
+  local PW=""
+  if [[ ${PASSWORD_STDIN:-0} -eq 1 ]]; then
+    IFS= read -r PW || die "No password on stdin."
+  elif [[ -n ${PASSWORD_FILE:-} ]]; then
+    PW=$(head -n1 "$PASSWORD_FILE" 2>/dev/null || true)
+    [[ -n "$PW" ]] || die "Password file empty."
+  else
+    die "Password not provided. Use --password-stdin or --password-file."
+  fi
+  printf '%s' "$PW"
+}
+
+linux_create_user(){
+  local u="$1" pw="$2"
+  if ! have_user "$u"; then
+    useradd -m -s /bin/bash "$u"
+    echo "${u}:${pw}" | chpasswd
+    log "Created Linux user $u"
+  else
+    echo "${u}:${pw}" | chpasswd
+    log "Updated Linux password for $u"
+  fi
+}
+
+linux_delete_user(){
+  local u="$1"
+  if have_user "$u"; then
+    userdel -r "$u" || die "Failed to delete Linux user $u"
+    log "Deleted Linux user $u (and home)"
+  fi
+}
+
+samba_upsert(){
+  local u="$1" pw="$2"
+  (echo "$pw"; echo "$pw") | smbpasswd -s -a "$u"
+  smbpasswd -e "$u" >/dev/null 2>&1 || true
+  log "Samba user ensured for $u"
+}
+
+samba_delete(){
+  local u="$1"
+  smbpasswd -x "$u" >/dev/null 2>&1 || true
+  log "Removed Samba user $u"
+}
+
+htpasswd_upsert(){
+  local u="$1" pw="$2"
+  ensure_htpasswd
+  echo "$pw" | htpasswd -B -i "$HTPASSWD_FILE" "$u" >/dev/null
+  log "htpasswd ensured for $u"
+}
+
+htpasswd_delete(){
+  local u="$1"
+  if [[ -f "$HTPASSWD_FILE" ]]; then
+    htpasswd -D "$HTPASSWD_FILE" "$u" >/dev/null 2>&1 || true
+    log "Removed htpasswd entry for $u"
+  fi
+}
+
+set_role_groups(){
+  local u="$1" role="$2"
+  [[ -n ${ROLE_GROUPS[$role]:-} ]] || die "Unknown role: $role"
+  local desired=(${ROLE_GROUPS[$role]})
+
+  for g in "${desired[@]}"; do
+    getent group "$g" >/dev/null 2>&1 || groupadd "$g"
+    gpasswd -a "$u" "$g" >/dev/null
+  done
+
+  for g in "${MANAGED_GROUPS[@]}"; do
+    if printf '%s\0' "${desired[@]}" | grep -zqx "$g"; then :; else
+      gpasswd -d "$u" "$g" >/dev/null 2>&1 || true
+    fi
+  done
+  log "Applied role '$role' to $u"
+}
+
+# ---- DB init & helpers ----
+ensure_db(){
+  install -d -m 0755 -o root -g root "$DB_DIR"
+  if [[ ! -f "$DB_FILE" ]]; then
+    install -m 0600 -o root -g root /dev/null "$DB_FILE"
+    sqlite3 "$DB_FILE" <<'SQL'
+PRAGMA journal_mode=WAL;
+CREATE TABLE IF NOT EXISTS users(
+  username   TEXT PRIMARY KEY,
+  role       TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS user_audit(
+  id        INTEGER PRIMARY KEY,
+  username  TEXT NOT NULL,
+  action    TEXT NOT NULL,
+  old_role  TEXT,
+  new_role  TEXT,
+  actor     TEXT,
+  ts        INTEGER NOT NULL
+);
+SQL
+  else
+    chmod 0600 "$DB_FILE" || true
+    chown root:root "$DB_FILE" || true
+  fi
+}
+
+get_superadmin(){
+  [[ -f "$SUPERADMIN_FILE" ]] && cat "$SUPERADMIN_FILE" || true
+}
+
+set_superadmin_username(){
+  local u="$1"
+  if [[ -f "$SUPERADMIN_FILE" ]]; then
+    die "Superadmin already initialized."
+  fi
+  install -m 0600 -o root -g root /dev/null "$SUPERADMIN_FILE"
+  printf '%s' "$u" > "$SUPERADMIN_FILE"
+}
+
+sqlq() {  # quote a non-empty string for SQL
+  local s="$1"
+  s=${s//\'/\'\'}           # escape single quotes
+  printf "'%s'" "$s"
+}
+
+sqln() {  # NULL if empty, else quoted
+  local s="${1-}"
+  if [[ -z "$s" ]]; then printf "NULL"; else sqlq "$s"; fi
+}
+
+db_upsert_user(){
+  local u="$1" role="$2" t; t=$(now_epoch)
+  sqlite3 "$DB_FILE" \
+    "INSERT INTO users(username,role,created_at,updated_at)
+     VALUES($(sqlq "$u"),$(sqlq "$role"),$t,$t)
+     ON CONFLICT(username) DO UPDATE SET role=excluded.role, updated_at=$t, deleted_at=NULL;"
+}
+
+db_touch_pass(){
+  local u="$1" t; t=$(now_epoch)
+  sqlite3 "$DB_FILE" \
+    "UPDATE users SET updated_at=$t WHERE username=$(sqlq "$u");" || true
+}
+
+db_mark_deleted(){
+  local u="$1" t; t=$(now_epoch)
+  sqlite3 "$DB_FILE" \
+    "UPDATE users SET deleted_at=$t, updated_at=$t WHERE username=$(sqlq "$u");" || true
+}
+
+db_audit(){
+  local u="$1" action="$2" old="${3-}" new="${4-}" actor="$5" t; t=$(now_epoch)
+  sqlite3 "$DB_FILE" \
+    "INSERT INTO user_audit(username,action,old_role,new_role,actor,ts)
+     VALUES($(sqlq "$u"),$(sqlq "$action"),$(sqln "$old"),$(sqln "$new"),$(sqlq "$actor"),$t);" || true
+}
+
+db_get_role(){
+  local u="$1"
+  sqlite3 -noheader -batch "$DB_FILE" \
+    "SELECT role FROM users WHERE username=$(sqlq "$u") AND deleted_at IS NULL LIMIT 1;"
+}
+
+# ---- Privilege guards ----
+is_superadmin_user(){ local u="$1"; [[ -n "$u" && "$u" == "$(get_superadmin)" ]]; }
+forbid_superadmin_target(){
+  local target="$1"
+  if is_superadmin_user "$target"; then die "Operation not permitted on superadmin."; fi
+}
+forbid_self_action(){
+  local target="$1"
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" == "$target" ]]; then die "Users cannot perform this action on themselves."; fi
+}
+prec_of(){ echo "${ROLE_PREC[$1]:-0}"; }
+forbid_higher_or_equal(){
+  local actor="$1" target="$2"
+  local ar tr
+  local actor_role target_role
+  actor_role="$(db_get_role "$actor")"
+  target_role="$(db_get_role "$target")"
+  [[ -z "$actor_role" ]] && actor_role="admin"   # CLI fallback
+  [[ -z "$target_role" ]] && target_role="viewer"
+  ar=$(prec_of "$actor_role"); tr=$(prec_of "$target_role")
+  if (( ar == 0 || tr == 0 )); then return 0; fi
+  if (( ar <= tr )); then die "Insufficient privilege: $actor_role cannot act on $target ($target_role)."; fi
+}
+
+# ---- Parse args ----
+need_root
+check_bins
+ensure_db
+
+ACTION="${1:-}"; [[ -z "$ACTION" ]] && { usage; exit 1; }; shift || true
+
+USER=""
+ROLE=""
+PASSWORD_STDIN=0
+PASSWORD_FILE=""
+ACTOR="<system>"
+JSON=0
+SUPERADMIN_CREATE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user) USER="$2"; shift 2;;
+    --role) ROLE="$2"; shift 2;;
+    --password-stdin) PASSWORD_STDIN=1; shift;;
+    --password-file) PASSWORD_FILE="$2"; shift 2;;
+    --actor) ACTOR="$2"; shift 2;;
+    --json) JSON=1; shift;;
+    --superadmin-create) SUPERADMIN_CREATE=1; shift;;
+    -h|--help) usage; exit 0;;
+    *) die "Unknown arg: $1";;
+  esac
+done
+
+# Auto-detect actor if not provided
+if [[ "$ACTOR" == "<system>" ]]; then
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    ACTOR="$SUDO_USER"
+  elif [[ -n "${USER:-}" ]]; then
+    ACTOR="$USER"
+  else
+    ACTOR="root"
+  fi
+fi
+
+
+# ---- Actions ----
+case "$ACTION" in
+  create)
+    [[ -n "$USER" ]] || die "--user required"
+    PW="$(read_password)"
+    if (( SUPERADMIN_CREATE )); then
+      # create superadmin; ensure not already set
+      [[ -z "$(get_superadmin)" ]] || die "Superadmin already exists."
+      ROLE="superadmin"
+    fi
+    linux_create_user "$USER" "$PW"
+    samba_upsert "$USER" "$PW"
+    htpasswd_upsert "$USER" "$PW"
+    if [[ -n "$ROLE" ]]; then set_role_groups "$USER" "$ROLE"; fi
+    db_upsert_user "$USER" "${ROLE:-viewer}"
+    db_audit "$USER" "create" "" "${ROLE:-viewer}" "$ACTOR"
+    if (( SUPERADMIN_CREATE )); then set_superadmin_username "$USER"; fi
+    echo "OK: created/updated user '$USER'."
+  ;;
+
+  delete)
+    [[ -n "$USER" ]] || die "--user required"
+    # protections
+    forbid_superadmin_target "$USER"
+    forbid_self_action "$USER"
+    [[ "$ACTOR" != "<system>" ]] && forbid_higher_or_equal "$ACTOR" "$USER"
+    old_role="$(db_get_role "$USER")"
+    htpasswd_delete "$USER"
+    samba_delete "$USER"
+    linux_delete_user "$USER"
+    db_mark_deleted "$USER"
+    db_audit "$USER" "delete" "$old_role" "" "$ACTOR"
+    echo "OK: deleted user '$USER'."
+  ;;
+
+  set-role)
+    [[ -n "$USER" && -n "$ROLE" ]] || die "--user and --role required"
+    have_user "$USER" || die "User $USER not found."
+    forbid_superadmin_target "$USER"
+    [[ "$ACTOR" != "<system>" ]] && forbid_higher_or_equal "$ACTOR" "$USER"
+    old_role="$(db_get_role "$USER")"
+    set_role_groups "$USER" "$ROLE"
+    db_upsert_user "$USER" "$ROLE"
+    db_audit "$USER" "set-role" "$old_role" "$ROLE" "$ACTOR"
+    echo "OK: role '$ROLE' applied to '$USER'."
+  ;;
+
+  set-pass)
+    [[ -n "$USER" ]] || die "--user required"
+    # Password changes:
+    # - Allowed for self (including superadmin)
+    # - For others: must have higher privilege; cannot target superadmin
+    self_change=0
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" == "$USER" ]]; then self_change=1; fi
+    if [[ "$ACTOR" == "$USER" ]]; then self_change=1; fi
+
+    if (( self_change )); then
+      : # allowed (even if superadmin)
+    else
+      forbid_superadmin_target "$USER"
+      [[ "$ACTOR" != "<system>" ]] && forbid_higher_or_equal "$ACTOR" "$USER"
+    fi
+
+    PW="$(read_password)"
+    echo "${USER}:${PW}" | chpasswd
+    samba_upsert "$USER" "$PW"
+    htpasswd_upsert "$USER" "$PW"
+    db_touch_pass "$USER"
+    db_audit "$USER" "set-pass" "" "" "$ACTOR"
+    echo "OK: password updated for '$USER'."
+  ;;
+
+  info)
+    [[ -n "$USER" ]] || die "--user required"
+    if (( JSON )); then
+      role="$(db_get_role "$USER")"
+      created=$(sqlite3 "$DB_FILE" "SELECT created_at FROM users WHERE username='$USER';")
+      updated=$(sqlite3 "$DB_FILE" "SELECT updated_at FROM users WHERE username='$USER';")
+      deleted=$(sqlite3 "$DB_FILE" "SELECT deleted_at FROM users WHERE username='$USER';")
+      groups="$(id -nG "$USER" 2>/dev/null || true)"
+      printf '{"username":"%s","role":"%s","created_at":%s,"updated_at":%s,"deleted_at":%s,"groups":[%s]}\n' \
+        "$USER" "${role:-""}" "${created:-null}" "${updated:-null}" "${deleted:-null}" \
+        "$(printf '%s' "$groups" | awk '{for(i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i}')"
+      exit 0
+    else
+      have_user "$USER" || die "User $USER not found."
+      echo "User: $USER"
+      echo "UID: $(id -u "$USER")"
+      echo "Groups: $(id -nG "$USER")"
+      if [[ -f "$HTPASSWD_FILE" ]] && grep -qE "^${USER}:" "$HTPASSWD_FILE"; then
+        echo "htpasswd: present"
+      else
+        echo "htpasswd: absent"
+      fi
+      if command -v pdbedit >/dev/null 2>&1 && pdbedit -L 2>/dev/null | cut -d: -f1 | grep -qx "$USER"; then
+        echo "samba: present"
+      else
+        echo "samba: absent"
+      fi
+      echo "Role (DB): $(db_get_role "$USER" || true)"
+      exit 0
+    fi
+  ;;
+
+  list-roles)
+    for k in "${!ROLE_GROUPS[@]}"; do
+      echo "$k => ${ROLE_GROUPS[$k]}"
+    done
+  ;;
+
+  *)
+    usage; exit 1;;
+esac

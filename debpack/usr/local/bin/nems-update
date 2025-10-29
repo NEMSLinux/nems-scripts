@@ -49,14 +49,14 @@ else
   echo "Updating NEMS Core Components"
   echo
 
+  echo "nems-scripts ... "
+  apt-get install -y nems-scripts
+  echo
+
   echo "nems-migrator ..."
   apt-get install -y nems-migrator nems-migrator-data
   # Get the latest version data from the NEMS API
   /usr/local/share/nems/nems-scripts/tasks.sh update platform
-  echo
-
-  echo "nems-scripts ... "
-  apt-get install -y nems-scripts
   echo
 
   echo "nems-plugins ... "

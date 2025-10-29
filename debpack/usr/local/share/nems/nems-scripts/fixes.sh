@@ -50,6 +50,18 @@
  platform=$(/usr/local/bin/nems-info platform)
  ver=$(/usr/local/bin/nems-info nemsver)
 
+
+ # Following a Python upgrade, Python may switch back to the default of Externally Managed
+ # Ensure Python is not set to Externally Managed
+  for pythondir in /usr/lib/python* /usr/local/lib/python*; do
+    [ -d "$pythondir" ] || continue
+    if [ -f "$pythondir/EXTERNALLY-MANAGED" ]; then
+      rm -f -- "$pythondir/EXTERNALLY-MANAGED"
+      echo "$pythondir was set to Externally managed. Changed."
+    fi
+  done
+
+
  # Update apt here so we don't have to do it below
  apt-get clean
  if (( $platform >= 0 )) && (( $platform <= 9 )); then
@@ -63,15 +75,6 @@
  if [[ ! $collector = *"Default Nagios"* ]]; then
    /usr/bin/mysql -u nconf -h 127.0.0.1 -pnagiosadmin -D nconf -e "UPDATE ConfigValues SET attr_value='Default Nagios' WHERE fk_id_attr = 1;"
  fi
-
- # Following a Python upgrade, Python may switch back to the default of Externally Managed
- # Ensure Python is not set to Externally Managed
- for pythondir in /usr/lib/python*/; do
-   if [ -f "$pythondir/EXTERNALLY-MANAGED" ]; then
-     rm "$pythondir/EXTERNALLY-MANAGED"
-     echo "$pythondir was set to Externally managed. Changed."
-   fi
- done
 
 
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then

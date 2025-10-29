@@ -34,3 +34,8 @@ if (( $platform >= 0 )) && (( $platform <= 9 )) || (( $platform >= 150 )) && (( 
   # Avoid errors if the user is already part of the GPIO group
   echo ""
 fi
+
+# Set permissions
+  # nems-userctl
+  chown root:root /usr/local/sbin/nems-userctl
+  chmod 750 /usr/local/sbin/nems-userctl

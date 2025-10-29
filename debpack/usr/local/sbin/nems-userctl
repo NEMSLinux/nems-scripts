@@ -53,6 +53,7 @@ USAGE:
   nems-userctl set-pass --user <name> [--password-stdin | --password-file <path>] [--actor <name>]
   nems-userctl info     --user <name> [--json]
   nems-userctl list-roles
+  nems-userctl list-users
 
 ROLES:
   $(printf '%s ' "${!ROLE_GROUPS[@]}")
@@ -413,6 +414,24 @@ case "$ACTION" in
     for k in "${!ROLE_GROUPS[@]}"; do
       echo "$k => ${ROLE_GROUPS[$k]}"
     done
+  ;;
+
+  list-users)
+    # prints all non-deleted users as JSON array
+    if [[ ! -f "$DB_FILE" ]]; then
+      echo "[]" ; exit 0
+    fi
+    # usernames are validated at creation, so safe to JSON-emit
+    sqlite3 -separator $'\t' "$DB_FILE" \
+      "SELECT username, role, created_at, updated_at, deleted_at FROM users WHERE deleted_at IS NULL ORDER BY username ASC" \
+    | awk 'BEGIN{print "["}
+           {
+             u=$1; r=$2; ca=$3; ua=$4; da=$5;
+             if(NR>1) printf ",";
+             printf "{\"username\":\"%s\",\"role\":\"%s\",\"created_at\":%s,\"updated_at\":%s}", u, r, (ca?ca:"null"), (ua?ua:"null")
+           }
+           END{print "]"}'
+    exit 0
   ;;
 
   *)

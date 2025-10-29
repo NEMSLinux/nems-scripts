@@ -1,5 +1,6 @@
 #!/bin/bash
 platform=$(/usr/local/bin/nems-info platform)
+export PIP_ROOT_USER_ACTION=ignore
 
 npm install -g speed-cloudflare-cli
 

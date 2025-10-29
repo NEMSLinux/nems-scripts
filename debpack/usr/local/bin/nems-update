@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Setup environment
+export PIP_ROOT_USER_ACTION=ignore
+export DEBIAN_FRONTEND=noninteractive
+
 echo ""
 echo "NEMS Update"
 echo "By Robbie Ferguson"
@@ -38,9 +42,7 @@ else
   fi
 
   # Upgrade pip
-  pip install --upgrade pip --root-user-action=ignore
-
-  export DEBIAN_FRONTEND=noninteractive
+  pip install --upgrade pip
 
   apt-get update
 

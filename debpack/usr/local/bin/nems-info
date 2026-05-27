@@ -161,12 +161,16 @@ elif [[ $COMMAND == "nemsverglobavail" ]]; then
 # Output the number of users connected to server
 elif [[ $COMMAND == "users" ]]; then
   export USERCOUNT=`/usr/bin/users | /usr/bin/wc -w`
-  if [ $USERCOUNT -eq 1 -o $USERCOUNT -eq -1 ]
-                then
-                        echo $USERCOUNT user
-                else
-                        echo $USERCOUNT users
-        fi
+  if [[ $VARIABLE == "plain" ]]; then
+    echo $USERCOUNT
+  else
+    if [ $USERCOUNT -eq 1 -o $USERCOUNT -eq -1 ]
+        then
+            echo $USERCOUNT user
+        else
+            echo $USERCOUNT users
+    fi
+  fi
 
 # Output disk usage in percent
 elif [[ $COMMAND == "diskusage" ]]; then
@@ -312,14 +316,14 @@ elif [[ $COMMAND == "username" ]]; then
   # Get NEMS username
   # From nems.conf
   if [[ -f /usr/local/share/nems/nems.conf ]]; then
-    if grep -q "username" /usr/local/share/nems/nems.conf; then
-      username=`cat /usr/local/share/nems/nems.conf | grep username |  printf '%s' $(cut -n -d '=' -f 2)`
+    if grep -q "nemsuser" /usr/local/share/nems/nems.conf; then
+      username=`cat /usr/local/share/nems/nems.conf | grep nemsuser |  printf '%s' $(cut -n -d '=' -f 2)`
     fi
   fi
   # Legacy support: from htpasswd
   if [[ $username == "" ]]; then
     if [[ -f /var/www/htpasswd ]] ; then
-      username=`cat /var/www/htpasswd | cut -d: -f1`
+      username=`cat /var/www/htpasswd | cut -d: -f1 | head -n 1`
     fi
   fi
   if [[ $username == "" ]]; then

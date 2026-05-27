@@ -2,7 +2,8 @@
 platform=$(/usr/local/bin/nems-info platform)
 export PIP_ROOT_USER_ACTION=ignore
 
-npm install -g speed-cloudflare-cli
+# Replaced with self-maintained version since this package is no longer maintained
+# npm install -g speed-cloudflare-cli
 
 ## Allow nagios and users in nagios group (your NEMS user) to run root nems-info commands without a password
 
@@ -40,3 +41,8 @@ fi
   # nems-userctl
   chown root:root /usr/local/sbin/nems-userctl
   chmod 750 /usr/local/sbin/nems-userctl
+  if [[ ! -e /var/log/nems/nems-userctl.log ]]; then
+    touch /var/log/nems/nems-userctl.log
+  fi
+  chown root:root /var/log/nems/nems-userctl.log
+  chmod 0600 /var/log/nems/nems-userctl.log

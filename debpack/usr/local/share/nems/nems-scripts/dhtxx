@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-DHT Sensor Output 2.0
+DHT Sensor Output 2.1
 ======================
 Author: Robbie Ferguson <robbie@category5.tv>
 Platform: NEMS Linux - https://nemslinux.com/
@@ -55,24 +55,27 @@ import queue
 # Check if the argument is '11' or '22'
 sensor_type = sys.argv[1] if len(sys.argv) > 1 else None
 if sensor_type not in ["11", "22"]:
-    print("Invalid sensor type. Use '11' for DHT11 or '22' for DHT22.")
+    print("Invalid sensor type. Use '11' for DHT11 or '22' for DHT22.", file=sys.stderr)
     sys.exit(1)
 
 sensor_string = "DHT11" if sensor_type == "11" else "DHT22"
 
 # Pin mapping
-pin_mapping = {
-    18: board.D18,
-    4: board.D4,
-}
+specified_pin = int(sys.argv[2]) if (len(sys.argv) > 2 and sys.argv[2].isdigit()) else None
 
 def detect_sensor_on_pin(pin, result_queue):
     """Function to attempt reading sensor data with error handling."""
+
+    # Safe pin attribute check:
+    if not hasattr(board, f"D{pin}"):
+        print(f"Invalid GPIO pin D{pin} specified for this hardware.", file=sys.stderr)
+        return False # or sys.exit(1)
+
     try:
         if sensor_type == "11":
-            dht_sensor = adafruit_dht.DHT11(pin_mapping[pin])
+            dht_sensor = adafruit_dht.DHT11(getattr(board, f"D{pin}"))
         else:
-            dht_sensor = adafruit_dht.DHT22(pin_mapping[pin])
+            dht_sensor = adafruit_dht.DHT22(getattr(board, f"D{pin}"))
 
         # Try to read data from the sensor
         dht_sensor.temperature
@@ -85,7 +88,7 @@ def detect_sensor_on_pin(pin, result_queue):
             result_queue.put(False)  # Any other RuntimeError
     except Exception as e:
         # Catch any other exception and log it
-        print(f"Error in thread while detecting sensor on pin {pin}: {e}")
+        print(f"Error in thread while detecting sensor on pin {pin}: {e}", file=sys.stderr)
         result_queue.put(False)
     finally:
         try:
@@ -104,7 +107,7 @@ def check_sensor_on_pin(pin, timeout=5):
 
     if sensor_thread.is_alive():
         # If the thread is still alive after the timeout, terminate it
-        print(f"Timeout occurred while checking pin {pin}.")
+        print(f"Timeout occurred while checking pin {pin}.", file=sys.stderr)
         return False
 
     # Get the result from the queue (True if detected, False otherwise)
@@ -114,7 +117,7 @@ def check_sensor_on_pin(pin, timeout=5):
         result = False  # Default to False if the queue is empty
 
     if result == "pin_error":
-        print(f"Unable to set line {pin} to input. Cleaning up and retrying...")
+        print(f"Unable to set line {pin} to input. Cleaning up and retrying...", file=sys.stderr)
         try:
             sensor_thread.join()  # Ensure the thread has finished
         except:
@@ -125,12 +128,12 @@ def check_sensor_on_pin(pin, timeout=5):
 
 def auto_detect_pin(timeout=5, retries=5, retry_delay=5):
     """Automatically detects which pin has the active sensor, retries several times before giving up."""
-    pins_to_check = [18, 4]
+    pins_to_check = [specified_pin] if specified_pin else [18, 4]
     for attempt in range(retries):
         for pin in pins_to_check:
             if check_sensor_on_pin(pin, timeout=timeout):
                 return pin
-        print(f"Retrying sensor detection... Attempt {attempt + 1}/{retries}")
+        print(f"Retrying sensor detection... Attempt {attempt + 1}/{retries}", file=sys.stderr)
         time.sleep(retry_delay)  # Delay before retrying (increased to 5 seconds)
     return None
 
@@ -139,17 +142,17 @@ active_pin = auto_detect_pin(timeout=5, retries=5, retry_delay=5)
 if active_pin is not None:
     pin = active_pin
 else:
-    print("No sensor detected on any of the pins after multiple attempts.")
+    print("No sensor detected on any of the pins after multiple attempts.", file=sys.stderr)
     sys.exit(1)  # Safely exit if no sensor is detected
 
 # Initialize the DHT sensor based on the detected pin
 try:
     if sensor_type == "11":
-        dhtDevice = adafruit_dht.DHT11(pin_mapping[pin], use_pulseio=False)
+        dhtDevice = adafruit_dht.DHT11(getattr(board, f"D{pin}"), use_pulseio=False)
     else:
-        dhtDevice = adafruit_dht.DHT22(pin_mapping[pin], use_pulseio=False)
+        dhtDevice = adafruit_dht.DHT22(getattr(board, f"D{pin}"), use_pulseio=False)
 except Exception as e:
-    print(f"Error initializing sensor: {e}")
+    print(f"Error initializing sensor: {e}", file=sys.stderr)
     sys.exit(1)
 
 def read_sensor(q):
@@ -162,7 +165,7 @@ def read_sensor(q):
         else:
             q.put((temperature_c, humidity))  # Put results in the queue
     except RuntimeError as error:
-        print(f"Runtime error while reading sensor: {error}")
+        print(f"Runtime error while reading sensor: {error}", file=sys.stderr)
         q.put((None, None))  # Put None if an error occurs
 
 loop = 0
@@ -178,7 +181,7 @@ while loop < max_attempts:
     sensor_thread.join(timeout=timeout_duration)
 
     if sensor_thread.is_alive():
-        print("Timeout while reading from the sensor.")
+        print("Timeout while reading from the sensor.", file=sys.stderr)
         sensor_thread.join()  # Ensure thread has completed
         loop += 1
         time.sleep(2.0)
@@ -189,7 +192,7 @@ while loop < max_attempts:
 
     # Check for valid readings
     if temperature_c is None or temperature_c == 0 or humidity is None or humidity == 0:
-        print("Invalid readings, retrying...")
+        print("Invalid readings, retrying...", file=sys.stderr)
         loop += 1
         time.sleep(2.0)
         continue
@@ -213,7 +216,7 @@ while loop < max_attempts:
     break  # Exit the loop if everything is successful
 
 if loop >= max_attempts:
-    print("Failed to read from the sensor after multiple attempts.")
+    print("Failed to read from the sensor after multiple attempts.", file=sys.stderr)
     try:
         dhtDevice.exit()  # Ensure the sensor exits properly in case of failure
     except:

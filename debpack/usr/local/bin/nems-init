@@ -381,6 +381,14 @@ service.rpi-monitor=0
 " >> /usr/local/share/nems/nems.conf
   fi
 
+  # Add the superadmin to NEMS User Control
+  if [[ -e /usr/local/share/nems/database/users.db ]]; then
+    echo "Resetting NEMS User Control database..."
+    rm -f /usr/local/share/nems/database/users.db
+  fi
+  echo "Registering new superadmin $username in NEMS User Control..."
+  echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin
+
   if [[ $platform == 22 ]]; then
     echo Configuring Amazon Web Services default user
       /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/cloud/cloud.cfg

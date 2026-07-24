@@ -222,17 +222,13 @@ set_superadmin_username() {
     install -m 0600 -o root -g root /dev/null "$NEMS_CONF"
   fi
 
-  # if nems.conf already has username=..., refuse to overwrite
-  if grep -qE '^nemsadmin=' "$NEMS_CONF"; then
-    die "NEMS Admin is already initialized."
+  # if nems.conf already has user.., refuse to overwrite
+  if grep -qE '^nemsuser=' "$NEMS_CONF"; then
+    echo "NEMS Admin is initialized."
+  else
+    # append nemsuser=... to nems.conf
+    printf 'nemsuser=%s\n' "$u" >> "$NEMS_CONF"
   fi
-
-  # append nemsadmin=... to nems.conf
-  printf 'nemsadmin=%s\n' "$u" >> "$NEMS_CONF"
-
-  # lock perms
-  chown root:root "$NEMS_CONF"
-  chmod 0600 "$NEMS_CONF"
 }
 
 sqlq() {  # quote a non-empty string for SQL
@@ -402,8 +398,11 @@ case "$ACTION" in
 
     PW="$(read_password)"
     if (( SUPERADMIN_CREATE )); then
-      # create superadmin; ensure not already set
-      [[ -z "$(get_boot_superadmin)" ]] || die "Superadmin already exists."
+      boot_super="$(get_boot_superadmin)"
+      [[ -n "$boot_super" ]] || die "Primary NEMS Admin has not been configured."
+      if [[ "$USER" != "$boot_super" ]]; then
+        die "Only the configured NEMS Admin ($boot_super) may be created as superadmin."
+      fi
       ROLE="superadmin"
     fi
     linux_create_user "$USER" "$PW"

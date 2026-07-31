@@ -39,7 +39,7 @@
   echo Done.
 
   # Restart services
-  echo "Restarting NEMS services..."
+  echo "Restarting NEMS services... please wait..."
   if (( $platform >= 0 )) && (( $platform <= 9 )); then
     systemctl restart rpimonitor
   fi

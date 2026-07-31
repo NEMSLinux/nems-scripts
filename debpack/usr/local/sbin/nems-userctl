@@ -392,28 +392,30 @@ fi
 case "$ACTION" in
   create)
     [[ -n "$USER" ]] || die "--user required"
-    forbid_higher_or_equal "$ACTOR" "$USER" "create"
 
-    actor_role="$(db_get_role "$ACTOR")"
-    [[ -z "$actor_role" ]] && actor_role="admin"  # fallback
-
-    # Handle superadmin override before checking role precedence
     if (( SUPERADMIN_CREATE )); then
+      # Primary superadmin setup during system initialization
       boot_super="$(get_boot_superadmin)"
-      [[ -n "$boot_super" ]] || die "Primary NEMS Admin has not been configured."
-      if [[ "$USER" != "$boot_super" ]]; then
+      if [[ -n "$boot_super" && "$USER" != "$boot_super" ]]; then
         die "Only the configured NEMS Admin ($boot_super) may be created as superadmin."
       fi
       ROLE="superadmin"
-    fi
+      effective_role="superadmin"
+    else
+      # Standard user creation logic
+      effective_role="${ROLE:-viewer}"
 
-    effective_role="${ROLE:-viewer}"
+      forbid_higher_or_equal "$ACTOR" "$USER" "create"
 
-    # Block promotions above actor:
-    actor_prec=$(prec_of "$actor_role")
-    new_prec=$(prec_of "$effective_role")
-    if (( new_prec > actor_prec )); then
-      die "Insufficient privilege: $actor_role cannot assign role '$effective_role'."
+      actor_role="$(db_get_role "$ACTOR")"
+      [[ -z "$actor_role" ]] && actor_role="admin"  # fallback
+
+      # Block role assignment higher than actor precedence
+      actor_prec=$(prec_of "$actor_role")
+      new_prec=$(prec_of "$effective_role")
+      if (( new_prec > actor_prec )); then
+        die "Insufficient privilege: $actor_role cannot assign role '$effective_role'."
+      fi
     fi
 
     PW="$(read_password)"

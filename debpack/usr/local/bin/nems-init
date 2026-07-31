@@ -1,23 +1,129 @@
 #!/bin/bash
-# First run initialization script
+# First run initialization script for NEMS Linux
 # Run this script with: sudo nems-init
-# It's already in the path via a symlink
+
+# ------------------------------------------------------------------------------
+# Defaults and Flag Parsing (Headless / Web Front-End Support)
+# ------------------------------------------------------------------------------
+HEADLESS=0
+FORCE_REINIT=0
+ARG_USERNAME=""
+ARG_PASSWORD=""
+ARG_EMAIL=""
+
+usage() {
+  echo "Usage: sudo nems-init [OPTIONS]"
+  echo ""
+  echo "Options:"
+  echo "  -h, --headless          Run in non-interactive mode (for Web UI / API calls)"
+  echo "  -u, --username USER     Superadmin username (3-16 lowercase chars)"
+  echo "  -p, --password PASS     Superadmin password (minimum 12 chars)"
+  echo "  -e, --email EMAIL       Superadmin notification email"
+  echo "  -f, --force             Force overwrite if already initialized"
+  echo "  --help                  Show this help message"
+  exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--headless) HEADLESS=1; shift ;;
+    -u|--username) ARG_USERNAME="$2"; shift 2 ;;
+    -p|--password) ARG_PASSWORD="$2"; shift 2 ;;
+    -e|--email) ARG_EMAIL="$2"; shift 2 ;;
+    -f|--force) FORCE_REINIT=1; shift ;;
+    --help) usage ;;
+    *) echo "Unknown option: $1"; usage ;;
+  esac
+done
+
+# Ensure root access
+if [[ $EUID -ne 0 ]]; then
+  echo "ERROR: This script must be run as root." >&2
+  exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Setup Environment & Temporary Directory
+# ------------------------------------------------------------------------------
 ver=$(/usr/local/bin/nems-info nemsver)
 platform=$(/usr/local/bin/nems-info platform)
 init=$(/usr/local/bin/nems-info init)
-tmpdir=`mktemp -d -p /usr/local/share/`
 olduser=$(/usr/local/bin/nems-info username)
+tmpdir=$(mktemp -d -p /usr/local/share/)
 
-  # Just in case nems-quickfix is running
-  quickfix=$(/usr/local/bin/nems-info quickfix)
-  if [[ $quickfix == 1 ]]; then
-    echo 'NEMS Linux is currently updating itself. Please wait...'
-    while [[ $quickfix == 1 ]]
-    do
-      sleep 1
-      quickfix=$(/usr/local/bin/nems-info quickfix)
-    done
+# Ensure temp directory cleanup on exit
+cleanup() {
+  rm -rf "$tmpdir"
+}
+trap cleanup EXIT
+
+# ------------------------------------------------------------------------------
+# Dependency Verification (Whiptail Check)
+# ------------------------------------------------------------------------------
+if [[ $HEADLESS -eq 0 ]] && ! command -v whiptail &> /dev/null; then
+  echo "Package 'whiptail' is required for the interactive UI but is not installed."
+  echo "Attempting automatic installation..."
+
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq whiptail > /dev/null 2>&1
+
+  # Check again after installation attempt
+  if ! command -v whiptail &> /dev/null; then
+    echo "WARNING: Could not install 'whiptail'. Falling back to non-interactive CLI mode."
+    HEADLESS=1
+  else
+    echo "'whiptail' installed successfully. Launching setup interface..."
+    sleep 1
   fi
+fi
+
+# ------------------------------------------------------------------------------
+# UI / Helper Functions
+# ------------------------------------------------------------------------------
+msg_box() {
+  local title="$1" text="$2" h="${3:-18}" w="${4:-76}"
+  if [[ $HEADLESS -eq 1 ]]; then
+    echo "[$title] $text"
+  else
+    whiptail --title "$title" --msgbox "$text" "$h" "$w"
+  fi
+}
+
+confirm_box() {
+  local title="$1" text="$2" h="${3:-14}" w="${4:-74}"
+  if [[ $HEADLESS -eq 1 ]]; then
+    return 0 # Assume yes in headless if passed --force, handled separately
+  else
+    whiptail --title "$title" --yesno "$text" "$h" "$w"
+  fi
+}
+
+isValidUsername() {
+  local re='^[[:lower:]_][[:lower:][:digit:]_-]{2,15}$'
+  (( ${#1} > 16 )) && return 1
+  [[ $1 =~ $re ]]
+}
+
+containsElement() {
+  local e match="$1"
+  shift
+  for e; do [[ "$e" == "$match" ]] && return 0; done
+  return 1
+}
+
+# ------------------------------------------------------------------------------
+# Pre-Flight System Checks
+# ------------------------------------------------------------------------------
+
+# Quickfix check
+quickfix=$(/usr/local/bin/nems-info quickfix)
+if [[ $quickfix == 1 ]]; then
+  echo 'NEMS Linux is currently updating itself. Please wait...'
+  while [[ $quickfix == 1 ]]; do
+    sleep 1
+    quickfix=$(/usr/local/bin/nems-info quickfix)
+  done
+fi
 
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.4'")}') )); then
   confbase=/etc/nems/conf/
@@ -27,284 +133,237 @@ else
   nagios=nagios3
 fi
 
-echo ""
-echo -e "\e[1mWelcome to the NEMS Linux initialization script.\e[0m"
-echo ""
-echo This quick questionaire will setup your account.
-if [[ $EUID -ne 0 ]]; then
-  echo "ERROR: This script must be run as root" 2>&1
-  exit 1
-else
-
-  # Ensure user changed their MAC address.
-  # DO NOT continue if you have not! Using the stock MAC means
-  # you'd have the same HWID as other users! That, as you can imagine
-  # can cause all kinds of problems, including security issues.
-  if [[ $platform == 20 ]]; then
-    hwid=$(/usr/local/bin/nems-info hwid)
-    # Bad HWID for MAC 080027C75EC1 (Development HWID for VM)
-    if [[ $hwid == *'4f6c6d8a4d2670e87004329b99bf517d'* ]] || [[ $hwid == *'d41d8cd98f00b204e9800998ecf8427e'* ]]; then
-      echo "You need to initialize a unique MAC address for your"
-      echo "virtual Network Interface. Shut down your NEMS appliance"
-      echo "and modify the Network Interface in your hypervisor."
-      echo ""
-      wget -q -O $tmpdir/mac https://nemslinux.com/api/mac
-      mac=`cat $tmpdir/mac`
-      echo "Here is a MAC address you can use in your VM Config: $mac"
-      echo ""
-      echo "CANNOT CONTINUE"
-      echo ""
-      exit 1
-    fi
+# Virtual MAC / Hardware ID Verification
+if [[ $platform == 20 ]]; then
+  hwid=$(/usr/local/bin/nems-info hwid)
+  if [[ $hwid == *'4f6c6d8a4d2670e87004329b99bf517d'* ]] || [[ $hwid == *'d41d8cd98f00b204e9800998ecf8427e'* ]]; then
+    wget -q -O "$tmpdir/mac" https://nemslinux.com/api/mac
+    mac=$(cat "$tmpdir/mac")
+    msg_box "MAC Address Error" "You need to initialize a unique MAC address for your virtual Network Interface.\n\nShut down your NEMS appliance and modify the Network Interface in your hypervisor.\n\nRecommended MAC address: $mac\n\nCANNOT CONTINUE." 16 76
+    exit 1
   fi
-  # Also bad for HWID d41d8cd98f00b204e9800998ecf8427e (NULL Response)
-    hwid=$(/usr/local/bin/nems-info hwid)
-    if [[ $hwid == *'4f6c6d8a4d2670e87004329b99bf517d'* ]] || [[ $hwid == *'d41d8cd98f00b204e9800998ecf8427e'* ]]; then
-      echo "Invalid hardware ID for this NEMS server."
-      printf "Please report this error: "
-      four=$(echo $hwid | cut -c1-4)
-      echo ${platform}-${four}-init
-      echo ""
-      echo "CANNOT CONTINUE"
-      echo ""
-      exit 1
-    fi
-
-  online=$(/usr/local/bin/nems-info online)
-  if [[ $online == 0 ]]; then
-    echo "I am not able to connect with Github."
-    echo "MAKE SURE your system clock is set correctly."
-    date
-    echo ""
-    echo "This could also be due to a lack of Internet connectivity, or a firewall issue."
-    echo "We'll proceed with initialization, however please note you need to fix this."
-    echo "NEMS updates come in via Github, and these patches ensure everything works well."
-    echo "Please resolve this issue, and confirm by pinging github.com from your NEMS server."
-    echo ""
-    sleep 5
-  fi
-
-  if [[ -d /home/pi ]]; then
-    # Must continue to support NEMS 1.1 and 1.2.x
-    echo "First, let's change the password of the pi Linux user..."
-    echo "REMEMBER: This will be the password you'll use for SSH/Local Login and Webmin."
-    echo "If you do not want to change it, simply enter the existing password."
-    while true; do
-      read -s -p "New Password for pi user: " pipassword
-      echo
-      read -s -p "New Password for pi user (again): " pipassword2
-      echo
-      [ "$pipassword" = "raspberry" ] && pipassword="-" && echo "You are not allowed to use that password."
-      [ "$pipassword" = "" ] && pipassword="-" && echo "You can't leave the password blank."
-      [ "$pipassword" = "$pipassword2" ] && break
-      echo "Please try again"
-    done
-    echo -e "$pipassword\n$pipassword" | passwd pi >$tmpdir/init 2>&1
-
-    echo "Your new password has been set for the Linux pi user."
-    echo "Use that password to access NEMS over SSH or when logging in to Webmin."
-  fi
-
-  if [[ $init = 1 ]]; then
-    echo ""
-    echo -e "\e[93m*** \e[91mWARNING \e[93m***\e[0m"
-    echo "Your NEMS server is already initialized!"
-    echo "If you proceed, all settings will be lost."
-    echo "If you wish to keep your settings, please"
-    echo "make a copy of your backup.nems file first,"
-    echo "initialize, and then run nems-restore."
-    echo ""
-    read -r -p "Do you want to wipe your config and re-initialize? [y/N] " beta
-    echo ""
-    if [[ $beta =~ ^([yY][eE][sS]|[yY])$ ]]; then
-      echo "Proceeding..."
-    else
-      echo "Aborted."
-      exit 1
-    fi
-  fi
-
-# Localization
-  echo -e "\e[2m"
-
-  # Configure timezone
-  dpkg-reconfigure tzdata
-
-  # Configure locale
-  dpkg-reconfigure locales
-
-  # Configure the keyboard locale (will be skipped if keyboard is not connected)
-  dpkg-reconfigure keyboard-configuration && service keyboard-setup restart
-
-# /Localization
-
-  echo -e "\e[0m"
-  isValidUsername() {
-    local re='^[[:lower:]_][[:lower:][:digit:]_-]{2,15}$'
-    (( ${#1} > 16 )) && return 1
-    [[ $1 =~ $re ]]
-  }
-  containsElement () {
-    local e match="$1"
-    shift
-    for e; do [[ "$e" == "$match" ]] && return 0; done
-    return 1
-  }
-  badnames=("nemsadmin" "nagios" "nems" "root" "user" "config" "pi" "admin" "robbie" "nagiosadmin" "www-data" "${olduser}")
-  while true; do
-  read -p "What would you like your NEMS Username to be? " username
-    if [[ ${username,,} == $username ]]; then
-      if isValidUsername "$username"; then
-        if containsElement "$username" "${badnames[@]}"; then
-          if [[ $username == ${olduser} ]]; then
-            echo Username is not allowed: already exists. Please try again.
-          else
-            echo Username is not allowed. Please try again.
-          fi
-          username=""
-        else
-          echo Username accepted.
-          echo ""
-          break
-        fi
-      else
-        echo Username is invalid. Please try again.
-      fi
-    else
-      echo Username must be all lowercase. Please try again.
-    fi
-  done
-
-  while true; do
-    read -s -p "Password: " password
-    echo
-    read -s -p "Password (again): " password2
-    echo
-    [ "$password" = "nemsadmin" ] && password="-" && echo "You are not allowed to use that password."
-    [ "$password" = "raspberry" ] && password="-" && echo "You are not allowed to use that password."
-    [ "$password" = "" ] && password="-" && echo "You can't leave the password blank."
-    [ "$password" = "$password2" ] && break
-    echo "Please try again"
-  done
-
-  echo ""
-  read -p "What email address should I send notifications to? " email
-
-  echo ""
-
-  # In case this is a re-initialization, clear the init file (remove old login), then add this user
-  echo "">/var/www/htpasswd && echo "${password}" | /usr/bin/htpasswd -B -c -i /var/www/htpasswd $username
-
-  # Create the Linux user
-  adduser --disabled-password --gecos "" $username
-  # Giving you files
-  # Transfer user files from old user to new user, especially since AWS SSH keys would break if we didn't do this and someone re-initialized a NEMS Server
-  printf "Moving all files in /home/${olduser} to /home/$username... "
-  rsync -rtv /home/${olduser}/ /home/${username}/ > /dev/null 2>&1
-  chown -R ${username}:${username} /home/${username}/
-  echo Done.
-
-
-
-  # User groups #
-    # Allow user to become super-user
-    usermod -aG sudo $username
-    # Allow them to also administer nagios, access livestatus, etc.
-    usermod -aG www-data,nagios $username
-    # Allow user to access GPIO without root access (where applicable)
-    usermod -aG gpio $username
-    # Allow user to control network connections
-    usermod -aG netdev $username
-    # Allow user to login to monit web interface
-    [ $(getent group monit) ] || groupadd monit
-    usermod -aG monit $username
-  ###############
-
-  # Set the user password
-  echo "$username:$password" | chpasswd > $tmpdir/init 2>&1
-
-  # Check the exit status of passwd command
-  if [ $? -eq 0 ]; then
-    echo "Password set successfully."
-  else
-    echo
-    echo "*****************************"
-    echo "** Failed to set password. **"
-    echo "*****************************"
-    echo "To ensure your system is bootable, I've set the password to: temp123"
-    echo "Please change this promptly using: sudo nems-passwd"
-    echo -e "temp123\ntemp123" | passwd $username >$tmpdir/init 2>&1
-    echo
-  fi
-
-  # Reset the RPi-Monitor user
-  cp /root/nems/nems-migrator/data/rpimonitor/daemon.conf /etc/rpimonitor
-
-  # Configure RPi-Monitor to run as the new user
-  if [[ -f /etc/rpimonitor/daemon.conf ]]; then
-    /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/rpimonitor/daemon.conf
-  fi
-
-  # Samba config
-    # Create Samba User
-    echo -e "$password\n$password" | smbpasswd -s -a $username
-    # Reset Samba users
-    cp /root/nems/nems-migrator/data/samba/smb.conf /etc/samba
-    # Configure new samba user
-    /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/samba/smb.conf
-    systemctl restart smbd
-
-echo Initializing new Nagios user
-systemctl stop $nagios
-
-# Import default Nagios configs for NEMS 1.4+
-if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.4'")}') )); then
-  rm -rf $confbase
-  mkdir -p $confbase
-  if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then
-    cp -R /root/nems/nems-migrator/data/nagios/conf/* $confbase
-  elif (( $(awk 'BEGIN {print ("'$ver'" >= "'1.5'")}') )); then
-    cp -R /root/nems/nems-migrator/data/1.5/nagios/conf/* $confbase
-  elif (( $(awk 'BEGIN {print ("'$ver'" >= "'1.4'")}') )); then
-    cp -R /root/nems/nems-migrator/data/1.4/nagios/conf/* $confbase
-  fi
-  okconfig="okconfig"
-  if [[ ! -d $confbase$okconfig ]]; then
-    mkdir $confbase$okconfig
-  fi
-  chown -R www-data:www-data $confbase
 fi
 
-# Reininitialize Nagios user account
-  echo "define contactgroup {
-                contactgroup_name                     admins
-                alias                                 Nagios Administrators
-                members                               $username
-}
-" > $confbase/global/contactgroups.cfg
-  echo "define contact {
-                contact_name                          $username
-                alias                                 Nagios Admin
-                host_notification_options             d,u,r,f,s
-                service_notification_options          w,u,c,r,f,s
-                email                                 $email
-                host_notification_period              24x7
-                service_notification_period           24x7
-                host_notification_commands            notify-host-by-email
-                service_notification_commands         notify-service-by-email
-}
-" > $confbase/global/contacts.cfg
+hwid=$(/usr/local/bin/nems-info hwid)
+if [[ $hwid == *'4f6c6d8a4d2670e87004329b99bf517d'* ]] || [[ $hwid == *'d41d8cd98f00b204e9800998ecf8427e'* ]]; then
+  four=$(echo "$hwid" | cut -c1-4)
+  msg_box "Hardware ID Error" "Invalid hardware ID for this NEMS server.\n\nPlease report this error: ${platform}-${four}-init\n\nCANNOT CONTINUE." 14 76
+  exit 1
+fi
 
-# Replace the database with Sample database
-systemctl stop mysql
-# Force kill MySQL (in case safe mode prevents shutdown, as is the case on Docker)
-  sleep 3
-  mysqldpid=$(pidof mysqld)
-  if [[ $mysqldpid != "" ]]; then
-    kill -9 $mysqldpid
-    sleep 1
+# Internet connectivity check
+online=$(/usr/local/bin/nems-info online)
+if [[ $online == 0 ]]; then
+  msg_box "Connectivity Warning" "Unable to connect to GitHub.\n\nPlease ensure your system clock and network settings are correct.\n\nInitialization will proceed, but updates/patches require GitHub connectivity." 14 76
+fi
+
+# Existing Initialization Warning
+if [[ $init = 1 ]]; then
+  if [[ $HEADLESS -eq 1 && $FORCE_REINIT -ne 1 ]]; then
+    echo "ERROR: NEMS server is already initialized. Pass --force to re-initialize." >&2
+    exit 1
+  elif [[ $HEADLESS -eq 0 ]]; then
+    if ! confirm_box "WARNING: Already Initialized" "Your NEMS server is already initialized!\n\nIf you proceed, all current settings will be erased. Ensure you have backed up your backup.nems file first.\n\nDo you want to wipe your configuration and re-initialize?" 14 74; then
+      echo "Initialization aborted."
+      exit 1
+    fi
   fi
-  systemctl stop mysql
+fi
+
+# ------------------------------------------------------------------------------
+# Introductory Verbiage & Info
+# ------------------------------------------------------------------------------
+if [[ $HEADLESS -eq 0 ]]; then
+  msg_box "NEMS Linux Initialization" "Welcome to NEMS Linux!\n\nThis script configures the primary SUPERADMIN account.\n\nIMPORTANT:\nThis is the system's root 'god mode' user account, giving unrestricted administrative control over NEMS Linux and its included tools.\n\nRECOMMENDED PRACTICE:\nUse a role-based username rather than an individual's personal name. Do not tie this master account to a single person or use it for daily tasks. After initialization, log in with this account to create sub-accounts for individual staff, IT workers, or family members." 20 76
+fi
+
+# ------------------------------------------------------------------------------
+# System Localization (Interactive Mode Only)
+# ------------------------------------------------------------------------------
+if [[ $HEADLESS -eq 0 ]]; then
+  dpkg-reconfigure tzdata || { echo "Localization configuration cancelled by user. Aborting initialization."; exit 1; }
+  dpkg-reconfigure locales || { echo "Localization configuration cancelled by user. Aborting initialization."; exit 1; }
+
+  if dpkg-reconfigure keyboard-configuration; then
+    service keyboard-setup restart
+  else
+    echo "Keyboard configuration cancelled by user. Aborting initialization."
+    exit 1
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# Data Collection & Validation
+# ------------------------------------------------------------------------------
+
+# --- Superadmin Username ---
+username="$ARG_USERNAME"
+badnames=("nemsadmin" "nagios" "nems" "root" "user" "config" "pi" "admin" "robbie" "nagiosadmin" "www-data" "${olduser}")
+
+while true; do
+  if [[ $HEADLESS -eq 0 && -z "$username" ]]; then
+    username=$(whiptail --title "Superadmin Account Creation" --inputbox "Enter a username for the root Superadmin role account:" 10 65 3>&1 1>&2 2>&3)
+    [ $? -ne 0 ] && { echo "Initialization cancelled by user."; exit 1; }
+  fi
+
+  username_clean=$(echo "$username" | tr '[:upper:]' '[:lower:]')
+
+  if [[ -z "$username" ]]; then
+    msg_box "Validation Error" "Username cannot be empty." 10 60
+  elif [[ "$username" != "$username_clean" ]]; then
+    msg_box "Validation Error" "Username must be all lowercase." 10 60
+  elif ! isValidUsername "$username"; then
+    msg_box "Validation Error" "Invalid username format. Must be 3-16 alphanumeric characters starting with a letter." 11 65
+  elif containsElement "$username" "${badnames[@]}"; then
+    msg_box "Validation Error" "Username '$username' is reserved or already in use. Please choose another." 11 65
+  else
+    break
+  fi
+
+  if [[ $HEADLESS -eq 1 ]]; then
+    echo "ERROR: Invalid username provided via arguments: '$username'" >&2
+    exit 1
+  fi
+  username=""
+done
+
+# --- Superadmin Password (Enforce 12+ Chars) ---
+password="$ARG_PASSWORD"
+
+while true; do
+  if [[ $HEADLESS -eq 0 && -z "$password" ]]; then
+    pass1=$(whiptail --title "Superadmin Security" --passwordbox "Enter a strong password for '$username' (Minimum 12 characters):" 10 65 3>&1 1>&2 2>&3)
+    [ $? -ne 0 ] && { echo "Initialization cancelled by user."; exit 1; }
+    pass2=$(whiptail --title "Superadmin Security" --passwordbox "Confirm Superadmin password:" 10 65 3>&1 1>&2 2>&3)
+    [ $? -ne 0 ] && { echo "Initialization cancelled by user."; exit 1; }
+
+    if [[ "$pass1" != "$pass2" ]]; then
+      msg_box "Validation Error" "Passwords do not match. Please try again." 10 60
+      continue
+    fi
+    password="$pass1"
+  fi
+
+  # Policy checks
+  if [[ ${#password} -lt 12 ]]; then
+    msg_box "Security Policy Error" "Password is too short (${#password} characters). Superadmin password MUST be at least 12 characters long." 11 65
+  elif [[ "$password" == "nemsadmin" || "$password" == "raspberry" ]]; then
+    msg_box "Security Policy Error" "You cannot use default system passwords." 10 60
+  else
+    break
+  fi
+
+  if [[ $HEADLESS -eq 1 ]]; then
+    echo "ERROR: Superadmin password does not satisfy security criteria (must be >= 12 chars and non-default)." >&2
+    exit 1
+  fi
+  password=""
+done
+
+# --- Email Notification Address ---
+email="$ARG_EMAIL"
+while [[ -z "$email" ]]; do
+  if [[ $HEADLESS -eq 1 ]]; then
+    echo "ERROR: Email address is required in headless mode." >&2
+    exit 1
+  fi
+  email=$(whiptail --title "System Notifications" --inputbox "Enter the Superadmin notification email address:" 10 65 "" 3>&1 1>&2 2>&3)
+  [ $? -ne 0 ] && { echo "Initialization cancelled by user."; exit 1; }
+done
+
+# ------------------------------------------------------------------------------
+# System Provisioning & Execution
+# ------------------------------------------------------------------------------
+echo "Initializing NEMS Linux Superadmin account ($username)..."
+
+# Clear old Web Htpasswd and create new user
+echo "" > /var/www/htpasswd
+echo "${password}" | /usr/bin/htpasswd -B -c -i /var/www/htpasswd "$username"
+
+# Create System User & Transfer Home Directory
+adduser --disabled-password --gecos "" "$username"
+if [[ -d "/home/${olduser}" ]]; then
+  echo "Transferring user files from /home/${olduser} to /home/${username}..."
+  rsync -rtv "/home/${olduser}/" "/home/${username}/" > /dev/null 2>&1
+  chown -R "${username}:${username}" "/home/${username}/"
+fi
+
+# Apply Privileges & Group Assignments
+usermod -aG sudo "$username"
+usermod -aG www-data,nagios "$username"
+usermod -aG gpio "$username"
+usermod -aG netdev "$username"
+[ $(getent group monit) ] || groupadd monit
+usermod -aG monit "$username"
+
+# Set Linux User Password
+echo "$username:$password" | chpasswd > "$tmpdir/init" 2>&1
+if [ $? -ne 0 ]; then
+  echo "WARNING: Failed to apply user password cleanly. Setting emergency fallback."
+  echo -e "temp123456789\ntemp123456789" | passwd "$username" > "$tmpdir/init" 2>&1
+fi
+
+# Application Configurations (RPi-Monitor & Samba)
+cp /root/nems/nems-migrator/data/rpimonitor/daemon.conf /etc/rpimonitor
+if [[ -f /etc/rpimonitor/daemon.conf ]]; then
+  /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/rpimonitor/daemon.conf
+fi
+
+echo -e "$password\n$password" | smbpasswd -s -a "$username"
+cp /root/nems/nems-migrator/data/samba/smb.conf /etc/samba
+/bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/samba/smb.conf
+systemctl restart smbd
+
+# ------------------------------------------------------------------------------
+# Monitoring Engine (Nagios) Provisioning
+# ------------------------------------------------------------------------------
+echo "Configuring Nagios core components..."
+systemctl stop $nagios
+
+if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.4'")}') )); then
+  rm -rf "$confbase"
+  mkdir -p "$confbase"
+  if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then
+    cp -R /root/nems/nems-migrator/data/nagios/conf/* "$confbase"
+  elif (( $(awk 'BEGIN {print ("'$ver'" >= "'1.5'")}') )); then
+    cp -R /root/nems/nems-migrator/data/1.5/nagios/conf/* "$confbase"
+  elif (( $(awk 'BEGIN {print ("'$ver'" >= "'1.4'")}') )); then
+    cp -R /root/nems/nems-migrator/data/1.4/nagios/conf/* "$confbase"
+  fi
+
+  okconfig="okconfig"
+  [[ ! -d "$confbase$okconfig" ]] && mkdir "$confbase$okconfig"
+  chown -R www-data:www-data "$confbase"
+fi
+
+# Configure Contacts and Groups
+cat <<EOF > "$confbase/global/contactgroups.cfg"
+define contactgroup {
+        contactgroup_name                   admins
+        alias                               Nagios Administrators
+        members                             $username
+}
+EOF
+
+cat <<EOF > "$confbase/global/contacts.cfg"
+define contact {
+        contact_name                        $username
+        alias                               Nagios Superadmin
+        host_notification_options           d,u,r,f,s
+        service_notification_options        w,u,c,r,f,s
+        email                               $email
+        host_notification_period            24x7
+        service_notification_period         24x7
+        host_notification_commands          notify-host-by-email
+        service_notification_commands       notify-service-by-email
+}
+EOF
+
+# Database Reset & Import
+systemctl stop mysql
+sleep 3
+mysqldpid=$(pidof mysqld)
+[[ -n "$mysqldpid" ]] && kill -9 $mysqldpid && sleep 1
 
 mv /var/lib/mysql /var/lib/mysql~
 rm -rf /var/lib/mysql~
@@ -313,114 +372,75 @@ cd /var/lib/
 tar xfz /root/nems/nems-migrator/data/mysql/NEMS-Sample.tar.gz
 chown -R mysql:mysql /var/lib/mysql
 
-# Force kill MySQL (in case safe mode prevents shutdown, as is the case on Docker)
-  sleep 3
-  mysqldpid=$(pidof mysqld)
-  if [[ $mysqldpid != "" ]]; then
-    kill -9 $mysqldpid
-    sleep 1
-  fi
-  systemctl stop mysql
-
 systemctl start mysql
 
-# Replace the Nagios cgi.cfg file with the sample and add username
+# Subsystem Tweaks (Nagios CGI, Check_MK, NConf)
 cp -fr /root/nems/nems-migrator/data/nagios/etc/* /usr/local/nagios/etc/
 /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /usr/local/nagios/etc/cgi.cfg
 
-# Replace the Check_MK users.mk file with the sample and add username
-if [[ -d /etc/check_mk ]]; then # Removed in NEMS 1.4+
+if [[ -d /etc/check_mk ]]; then
   cp -f /root/nems/nems-migrator/data/check_mk/users.mk /etc/check_mk/multisite.d/wato/users.mk
   /bin/sed -i -- 's/nagiosadmin/'"$username"'/g' /etc/check_mk/multisite.d/wato/users.mk
   chown www-data:www-data /etc/check_mk/multisite.d/wato/users.mk
 fi
 
-# Remove nconf history, should it exist
 mysql -u nconf -pnagiosadmin nconf -e "TRUNCATE History"
-
-# Update user info in NConf
-  echo "  Updating contact: $username"
-  mysql -t -u nconf -pnagiosadmin nconf -e "UPDATE ConfigValues SET attr_value='$username' WHERE fk_id_attr=47;"
-  mysql -t -u nconf -pnagiosadmin nconf -e "UPDATE ConfigValues SET attr_value='$email' WHERE fk_id_attr=55;"
+mysql -t -u nconf -pnagiosadmin nconf -e "UPDATE ConfigValues SET attr_value='$username' WHERE fk_id_attr=47;"
+mysql -t -u nconf -pnagiosadmin nconf -e "UPDATE ConfigValues SET attr_value='$email' WHERE fk_id_attr=55;"
 
 systemctl start $nagios
+service cron restart
 
-  # Forcibly restart cron to prevent tasks running at wrong times after timezone update
-  service cron stop && service cron start
-
+# NagVis & SSL Setup
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.3'")}') )); then
-
-  # Configure NagVis user
   cp -f /root/nems/nems-migrator/data/nagvis/auth.db /etc/nagvis/etc/
   chown www-data:www-data /etc/nagvis/etc/auth.db
-  # Note, this is being added as specifically userId 1 as this user is users2role 1, administrator
-  # NagVis hashes its SHA1 passwords with the long string, which is duplicated in the nagvis ini file - /etc/nagvis/etc/nagvis.ini.php
   sqlite3 /etc/nagvis/etc/auth.db "INSERT INTO users (userId,name,password) VALUES (1,'$username','$(echo -n '29d58ead6a65f5c00342ae03cdc6d26565e20954'$password | sha1sum | awk '{print $1}')');"
-
-  # Create new SSL and SSH Certificates
   /usr/local/bin/nems-cert
-
 fi
 
-  echo ""
+# Write System Configuration
+echo "version=$ver" > /usr/local/share/nems/nems.conf
+echo "nemsuser=$username" >> /usr/local/share/nems/nems.conf
 
-# Generate nems.conf file
-  echo "version=$ver" > /usr/local/share/nems/nems.conf
-  echo "nemsuser=$username" >> /usr/local/share/nems/nems.conf
-  # If it's low-end hardware, disable all extraneous daemons by default
-  if \
-   (( $platform == 0 )) || \
-   (( $platform == 1 )) || \
-   (( $platform == 2 )); then
-     echo "\
+if (( platform >= 0 && platform <= 2 )); then
+  cat <<EOF >> /usr/local/share/nems/nems.conf
 service.nagios-api=0
 service.webmin=0
 service.monitorix=0
 service.cockpit=0
 service.rpi-monitor=0
-" >> /usr/local/share/nems/nems.conf
+EOF
+fi
+
+# Register with NEMS User Control
+if [[ -e /usr/local/share/nems/database/users.db ]]; then
+  rm -f /usr/local/share/nems/database/users.db
+fi
+echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin
+
+# AWS Infrastructure Adjustments
+if [[ $platform == 22 ]]; then
+  /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/cloud/cloud.cfg
+  if [[ -e /home/nemsadmin/.ssh/authorized_keys ]]; then
+    mkdir -p "/home/$username/.ssh"
+    mv /home/nemsadmin/.ssh/authorized_keys "/home/$username/.ssh/"
+    chown "$username:$username" "/home/$username/.ssh/authorized_keys"
   fi
+fi
 
-  # Add the superadmin to NEMS User Control
-  if [[ -e /usr/local/share/nems/database/users.db ]]; then
-    echo "Resetting NEMS User Control database..."
-    rm -f /usr/local/share/nems/database/users.db
-  fi
-  echo "Registering new superadmin $username in NEMS User Control..."
-  echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin
+# Disable Temporary / Old Admin Account
+if [[ -d "/home/$username" && -d "/home/${olduser}" ]]; then
+  deluser "${olduser}" sudo >/dev/null 2>&1
+  deluser "${olduser}" netdev >/dev/null 2>&1
+  rndpass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+  echo -e "$rndpass\n$rndpass" | passwd "${olduser}" > "$tmpdir/init" 2>&1
+fi
 
-  if [[ $platform == 22 ]]; then
-    echo Configuring Amazon Web Services default user
-      /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/cloud/cloud.cfg
-      # Amazon Web Services uses a key pair instead of password
-      if [[ -e /home/nemsadmin/.ssh/authorized_keys ]]; then
-        if [[ ! -e /home/$username/.ssh ]]; then
-          mkdir -p /home/$username/.ssh
-        fi
-        mv /home/nemsadmin/.ssh/authorized_keys /home/$username/.ssh/
-        chown $username:$username /home/$username/.ssh/authorized_keys
-      fi
-    echo Done.
-  fi
-
-  # Disable old admin account
-  if [[ -d /home/$username ]] && [[ -d /home/${olduser} ]]; then
-    # old user will be deleted automatically via cron now that you're initialized, but this stuff is just to protect users in case for some reason the nemsuser user remains.
-    echo "Disabling ${olduser} access. Remember you must now login as ${username}"
-    # Cockpit will die here. So warn users they need to reboot
-    echo "You may lose connection now."
-    printf "Please reconnect as $username"
-    echo ""
-    deluser ${olduser} sudo # Remove super user access from nemsadmin account
-    deluser ${olduser} netdev # Remove network device access from nemsadmin account
-    rndpass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w ${1:-32} | head -n 1)
-    echo -e "$rndpass\n$rndpass" | passwd ${olduser} >$tmpdir/init 2>&1 # set a random password on the account so no longer can login
-  fi
-
-  echo ""
-    echo "You can now visit https://$(/usr/local/bin/nems-info ip)/ to get started."
-    echo ""
-    echo "Enjoy NEMS Linux!"
-    echo ""
-
+# Finish Summary
+ip_addr=$(/usr/local/bin/nems-info ip)
+if [[ $HEADLESS -eq 0 ]]; then
+  msg_box "Initialization Complete" "NEMS Linux initialization is complete!\n\nSuperadmin Account: $username\nAccess URL: https://${ip_addr}/\n\nYou may now log in to the web interface to create sub-accounts for staff or personal use." 14 74
+else
+  echo "Initialization complete! Access system at https://${ip_addr}/"
 fi

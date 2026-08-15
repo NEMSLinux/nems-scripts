@@ -78,7 +78,7 @@ init=$(/usr/local/bin/nems-info init)
 platform_name=$(/usr/local/bin/nems-info platform-name)
 
 if [[ $init == "0" ]]; then
-  output_init="Your NEMS server is not yet initialized. Please run: sudo nems-init"
+  output_init="Your NEMS server is not yet initialized."
 fi
 
 if (( $(echo "$veravail > $ver" |bc -l) )); then
@@ -98,7 +98,7 @@ Active Sessions:  $users\n\
 Internet Status:  $internet\n\
 \n$output_init\n\
 \n\
-To login, use SSH or press CTRL-ALT-F2\n\
+To login, visit https://nems.local/ or https://${ip}/\n\
 \n\
 For help, visit: docs.nemslinux.com"
 display_screen "NEMS Server Overview"

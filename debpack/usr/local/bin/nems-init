@@ -308,6 +308,7 @@ cp /root/nems/nems-migrator/data/rpimonitor/daemon.conf /etc/rpimonitor
 if [[ -f /etc/rpimonitor/daemon.conf ]]; then
   /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/rpimonitor/daemon.conf
 fi
+systemctl restart rpimonitor
 
 echo -e "$password\n$password" | smbpasswd -s -a "$username"
 cp /root/nems/nems-migrator/data/samba/smb.conf /etc/samba

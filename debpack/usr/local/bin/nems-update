@@ -133,6 +133,7 @@ else
 
   # Update nems-nconf
   echo " - nconf... "
+  chown -R root:root /var/www/nconf
   cd /var/www/nconf
   git config --unset http.postBuffer
   commit=`git rev-parse HEAD`

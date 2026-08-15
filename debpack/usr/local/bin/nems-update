@@ -42,7 +42,8 @@ else
   fi
 
   # Upgrade pip
-  pip install --upgrade pip
+  # Likely no longer needed since 1.8 pulls pip from Debian repos
+  #pip install --upgrade pip
 
   apt-get update
 
@@ -52,47 +53,53 @@ else
   echo
 
   echo "nems-scripts ... "
-  apt-get install -y nems-scripts
+  apt-get install --only-upgrade -y nems-scripts
   echo
 
   echo "nems-migrator ..."
-  apt-get install -y nems-migrator nems-migrator-data
+  apt-get install --only-upgrade -y nems-migrator nems-migrator-data
   # Get the latest version data from the NEMS API
   /usr/local/share/nems/nems-scripts/tasks.sh update platform
   echo
 
   echo "nems-plugins ... "
-  apt-get install -y nems-plugins
+  apt-get install --only-upgrade -y nems-plugins
   echo
 
   echo "9590 ... "
-  apt-get install -y 9590
+  apt-get install --only-upgrade -y 9590
   echo
 
   echo "hw-detect ... "
-  apt-get install -y hw-detect
+  apt-get install --only-upgrade -y hw-detect
   echo
 
   echo "nems-www ... "
-  apt-get install -y nems-www
+  apt-get install --only-upgrade -y nems-www
   echo
 
   echo "wmic ... "
-  apt-get install -y wmic
+  apt-get install --only-upgrade -y wmic
   echo
 
   echo "nems-tv ... "
-  apt-get install -y nems-tv
+  apt-get install --only-upgrade -y nems-tv
   echo
 
   echo "nems-tools ... "
-  apt-get install -y nems-tools
+  apt-get install --only-upgrade -y nems-tools
   echo
 
   echo "nems-configs ... "
-  apt-get install -y nems-configs
+  apt-get install --only-upgrade -y nems-configs
   echo
 
+  # NEMS AI is a bit different: Entirely skip it unless the user has installed it (it is not pre-installed with NEMS Linux and only installed by the user manually).
+  if dpkg-query -W -f='${Status}' nems-ai 2>/dev/null | grep -q "ok installed"; then
+    echo "nems-ai ... "
+    apt-get install --only-upgrade -y nems-ai
+    echo
+  fi
 
 
   # Update nems-admin

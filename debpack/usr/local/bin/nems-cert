@@ -25,10 +25,15 @@
   chmod 600 /etc/ssl/certs/ssl-cert-snakeoil-combined.pem
 
   echo "Generating unique SSH Certificates..."
-  /bin/rm /etc/ssh/ssh_host_*
+  /bin/rm -f /etc/ssh/ssh_host_*
   if [[ ! $platform == "21" ]]; then
-    dpkg-reconfigure openssh-server
-    systemctl restart ssh
+    # Generate missing host keys cleanly without dpkg locks
+    ssh-keygen -A
+
+    # Only restart SSH if running manually (not during first boot)
+    if [[ "$1" != "--no-restart" ]]; then
+      systemctl restart ssh
+    fi
   fi
 
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

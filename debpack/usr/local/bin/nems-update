@@ -133,7 +133,10 @@ else
 
   # Update nems-nconf
   echo " - nconf... "
-  chown -R root:root /var/www/nconf
+  # Ensure permissions are set correctly
+  chown -R www-data:www-data /var/www/nconf
+  # Ensure git can update the folder despite that it isn't owned by root
+  git config --global --add safe.directory /var/www/nconf
   cd /var/www/nconf
   git config --unset http.postBuffer
   commit=`git rev-parse HEAD`
@@ -161,8 +164,9 @@ else
     echo "   New Commit: $commit"
   fi
 
+  echo ""
   # Perform any fixes that have been released since NEMS was built
-  printf "Running updates and fixes... "
+  printf "Running post-release patches... "
   if [ -d /usr/local/share/nems/nems-scripts ]; then
     /usr/local/share/nems/nems-scripts/fixes.sh
   fi

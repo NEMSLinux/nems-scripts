@@ -83,7 +83,7 @@ fi
 msg_box() {
   local title="$1" text="$2" h="${3:-18}" w="${4:-76}"
   if [[ $HEADLESS -eq 1 ]]; then
-    echo "[$title] $text"
+    printf "[%s]\n%b\n\n" "$title" "$text"
   else
     whiptail --title "$title" --msgbox "$text" "$h" "$w"
   fi

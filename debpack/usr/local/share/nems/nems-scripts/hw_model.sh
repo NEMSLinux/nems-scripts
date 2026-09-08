@@ -817,19 +817,16 @@
 				HW_MODEL_DESCRIPTION='ODROID C0/C1/C1+'
 
 			#ODROID-N2
-			elif (( $HW_MODEL == 15 )); then
+			elif (( $HW_MODEL == 15 || $HW_MODEL == 16 )); then
 
 				MEMTOTAL=$(free | awk '/^Mem:/{print $2}')
 				if (( $MEMTOTAL > 3800000 )); then
 
 					HW_MODEL_DESCRIPTION='ODROID-N2 (4 GB)'
 					HW_MODEL=16
-					
 				else
-				
 					HW_MODEL_DESCRIPTION='ODROID-N2 (2 GB)'
 					IMAGE_ADDITIONAL_CREDITS='Meveric'
-					
 				fi
 
 			# Logic Supply CL100

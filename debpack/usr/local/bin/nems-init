@@ -49,6 +49,7 @@ ver=$(/usr/local/bin/nems-info nemsver)
 platform=$(/usr/local/bin/nems-info platform)
 init=$(/usr/local/bin/nems-info init)
 olduser=$(/usr/local/bin/nems-info username)
+ip_addr=$(/usr/local/bin/nems-info ip)
 tmpdir=$(mktemp -d -p /usr/local/share/)
 
 # Ensure temp directory cleanup on exit
@@ -174,7 +175,7 @@ fi
 # Introductory Verbiage & Info
 # ------------------------------------------------------------------------------
 if [[ $HEADLESS -eq 0 ]]; then
-  msg_box "NEMS Linux Initialization" "Welcome to NEMS Linux!\n\nThis script configures the primary SUPERADMIN account.\n\nIMPORTANT:\nThis is the system's root 'god mode' user account, giving unrestricted administrative control over NEMS Linux and its included tools.\n\nRECOMMENDED PRACTICE:\nUse a role-based username rather than an individual's personal name. Do not tie this master account to a single person or use it for daily tasks. After initialization, log in with this account to create sub-accounts for individual staff, IT workers, or family members." 20 76
+  msg_box "NEMS Linux Initialization" "Welcome to NEMS Linux!\n\nNOTICE:\nTerminal initialization remains available for backward compatibility, but is no longer required or recommended. You can now initialize NEMS Linux directly in your web browser by visiting:\nhttps://nems.local/ or https://${ip_addr}/\n\nSUPERADMIN ACCOUNT SETUP:\nThis script configures the system's root 'god mode' user account, giving unrestricted administrative control over NEMS Linux and its included tools.\n\nRECOMMENDED PRACTICE:\nUse a role-based username rather than an individual's personal name. Do not tie this master account to a single person or use it for daily tasks. After initialization, log in with this account to create sub-accounts for individual staff, IT workers, or family members." 23 76
 fi
 
 # ------------------------------------------------------------------------------
@@ -438,7 +439,6 @@ if [[ -d "/home/$username" && -d "/home/${olduser}" ]]; then
 fi
 
 # Finish Summary
-ip_addr=$(/usr/local/bin/nems-info ip)
 if [[ $HEADLESS -eq 0 ]]; then
   msg_box "Initialization Complete" "NEMS Linux initialization is complete!\n\nSuperadmin Account: $username\nAccess URL: https://${ip_addr}/\n\nYou may now log in to the web interface to create sub-accounts for staff or personal use." 14 74
 else

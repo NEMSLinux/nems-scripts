@@ -35,7 +35,7 @@ if [[ ! -e /var/log/nems/patches.log ]]; then
 fi
 
 while  ! grep -q "PATCH-000002" /var/log/nems/patches.log; do
-  output="\n\nFilesystem is being resized.\n\nNEMS will reboot. Please standby..."
+  output="\n\nFilesystem is being resized.\n\nNEMS may reboot. Please standby..."
   display_screen "NEMS Linux $ver"
   sleep 10
 done

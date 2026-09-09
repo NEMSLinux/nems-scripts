@@ -76,6 +76,17 @@
    /usr/bin/mysql -u nconf -h 127.0.0.1 -pnagiosadmin -D nconf -e "UPDATE ConfigValues SET attr_value='Default Nagios' WHERE fk_id_attr = 1;"
  fi
 
+if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.8'")}') )); then
+
+  # Early builds of 1.8 had the incorrect permissions set for logrotate config
+  # This was later fixed so only has to be applied here
+  if [[ -e /etc/logrotate.d/nems.conf ]]; then
+    mv /etc/logrotate.d/nems.conf /etc/logrotate.d/nems
+    chown root:root /etc/logrotate.d/nems
+    /bin/systemctl restart logrotate
+  fi
+
+fi
 
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then
 

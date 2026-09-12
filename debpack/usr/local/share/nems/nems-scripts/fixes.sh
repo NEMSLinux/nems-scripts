@@ -86,6 +86,11 @@ if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.8'")}') )); then
     /bin/systemctl restart logrotate
   fi
 
+  # Install NEMS Kiosk (wasn't included in early builds but will be in future builds)
+  if [[ ! -e /usr/local/bin/nems-hdmi-output ]]; then
+    apt -y install nems-kiosk
+  fi
+
 fi
 
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then

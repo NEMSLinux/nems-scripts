@@ -292,7 +292,7 @@ fi
 # Apply Privileges & Group Assignments
 usermod -aG sudo "$username"
 usermod -aG www-data,nagios "$username"
-usermod -aG gpio "$username"
+getent group gpio &>/dev/null && usermod -aG gpio "$username"
 usermod -aG netdev "$username"
 [ $(getent group monit) ] || groupadd monit
 usermod -aG monit "$username"
@@ -305,11 +305,15 @@ if [ $? -ne 0 ]; then
 fi
 
 # Application Configurations (RPi-Monitor & Samba)
-cp /root/nems/nems-migrator/data/rpimonitor/daemon.conf /etc/rpimonitor
-if [[ -f /etc/rpimonitor/daemon.conf ]]; then
-  /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/rpimonitor/daemon.conf
+if command -v rpimonitor &>/dev/null || [ -f /lib/systemd/system/rpimonitor.service ]; then
+  if [[ -d /etc/rpimonitor ]]; then
+    cp /root/nems/nems-migrator/data/rpimonitor/daemon.conf /etc/rpimonitor
+    if [[ -f /etc/rpimonitor/daemon.conf ]]; then
+      /bin/sed -i -- 's/nemsadmin/'"$username"'/g' /etc/rpimonitor/daemon.conf
+    fi
+    systemctl restart rpimonitor
+  fi
 fi
-systemctl restart rpimonitor
 
 echo -e "$password\n$password" | smbpasswd -s -a "$username"
 cp /root/nems/nems-migrator/data/samba/smb.conf /etc/samba
@@ -418,7 +422,7 @@ fi
 if [[ -e /usr/local/share/nems/database/users.db ]]; then
   rm -f /usr/local/share/nems/database/users.db
 fi
-echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin
+echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin > /dev/null
 
 # AWS Infrastructure Adjustments
 if [[ $platform == 22 ]]; then
@@ -440,7 +444,7 @@ fi
 
 # Finish Summary
 if [[ $HEADLESS -eq 0 ]]; then
-  msg_box "Initialization Complete" "NEMS Linux initialization is complete!\n\nSuperadmin Account: $username\nAccess URL: https://${ip_addr}/\n\nYou may now log in to the web interface to create sub-accounts for staff or personal use." 14 74
+  msg_box "Initialization Complete" "NEMS Linux initialization is complete!\n\nSuperadmin Account: $username\nAccess URL: https://nems.local/ or https://${ip_addr}/\n\nYou may now log in to the web interface to create sub-accounts for staff or personal use." 14 74
 else
   echo "Initialization complete! Access system at https://${ip_addr}/"
 fi

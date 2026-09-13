@@ -94,6 +94,10 @@ else
   apt-get install --only-upgrade -y nems-configs
   echo
 
+  echo "nems-kiosk ... "
+  apt-get install --only-upgrade -y nems-kiosk
+  echo
+
   # NEMS AI is a bit different: Entirely skip it unless the user has installed it (it is not pre-installed with NEMS Linux and only installed by the user manually).
   if dpkg-query -W -f='${Status}' nems-ai 2>/dev/null | grep -q "ok installed"; then
     echo "nems-ai ... "

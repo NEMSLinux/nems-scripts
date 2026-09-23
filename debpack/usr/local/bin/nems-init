@@ -422,7 +422,7 @@ fi
 if [[ -e /usr/local/share/nems/database/users.db ]]; then
   rm -f /usr/local/share/nems/database/users.db
 fi
-echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin > /dev/null
+echo "$password" | nems-userctl create --user "$username" --superadmin-create --password-stdin
 
 # AWS Infrastructure Adjustments
 if [[ $platform == 22 ]]; then

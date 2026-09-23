@@ -6,6 +6,7 @@
 # Version 1.1 // October 30, 2025 - Add audit log
 # Version 1.2 // October 31, 2025
 # Version 1.3 // July 31, 2026 - Allow empty keys and fix order of SUPERADMIN_CREATE to accommodate NEMS Web-based Init
+# Version 1.4 // September 23, 2026 - Suppress SQLite WAL output in favor of user-friendly init message
 
 set -euo pipefail
 
@@ -64,11 +65,11 @@ NEMS unified user management
 By Robbie Ferguson // Bald Nerd
 
 USAGE:
-  nems-userctl create   --user <name> [--role <role>] [--password-stdin | --password-file <path>] [--superadmin-create]
-  nems-userctl delete   --user <name> [--actor <name>]
+  nems-userctl create    --user <name> [--role <role>] [--password-stdin | --password-file <path>] [--superadmin-create]
+  nems-userctl delete    --user <name> [--actor <name>]
   nems-userctl set-role --user <name> --role <role> [--actor <name>]
   nems-userctl set-pass --user <name> [--password-stdin | --password-file <path>] [--actor <name>]
-  nems-userctl info     --user <name> [--json]
+  nems-userctl info      --user <name> [--json]
   nems-userctl list-roles
   nems-userctl list-users
 
@@ -76,8 +77,8 @@ ROLES:
   $(printf '%s ' "${!ROLE_GROUPS[@]}")
 
 Password input:
-  --password-stdin             Read password from STDIN (recommended)
-  --password-file <path>       Read password from a file (single line)
+  --password-stdin            Read password from STDIN (recommended)
+  --password-file <path>        Read password from a file (single line)
 
 EOF
 }
@@ -187,7 +188,7 @@ ensure_db(){
   install -d -m 0755 -o root -g root "$DB_DIR"
   if [[ ! -f "$DB_FILE" ]]; then
     install -m 0600 -o root -g root /dev/null "$DB_FILE"
-    sqlite3 "$DB_FILE" <<'SQL'
+    sqlite3 "$DB_FILE" >/dev/null <<'SQL'
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS users(
   username   TEXT PRIMARY KEY,
@@ -206,6 +207,8 @@ CREATE TABLE IF NOT EXISTS user_audit(
   ts        INTEGER NOT NULL
 );
 SQL
+    echo "NEMS User Control database initialized."
+    log "Initialized NEMS User Control database."
   else
     chmod 0600 "$DB_FILE" || true
     chown root:root "$DB_FILE" || true

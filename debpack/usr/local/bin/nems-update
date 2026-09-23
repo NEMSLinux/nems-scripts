@@ -78,6 +78,10 @@ else
   apt-get install --only-upgrade -y nems-www
   echo
 
+  echo "nems-ncc ... "
+  apt-get install --only-upgrade -y nems-ncc
+  echo
+
   echo "wmic ... "
   apt-get install --only-upgrade -y wmic
   echo

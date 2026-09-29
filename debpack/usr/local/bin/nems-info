@@ -48,23 +48,46 @@ fi
 
 # Output local IP address
 if [[ $COMMAND == "ip" ]]; then
-  getPlatform
-  if (( $platform == 22 )); then
-    # AWS will return the internal IP on the NIC, so instead, use the instance metadata service to obtain the public IP
-    ip=$(/usr/bin/curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-  else
-    # Work with any NIC
-    ip=$(/sbin/ip -f inet addr show $($0 nic) | grep -Po 'inet \K[\d.]+' | head -n 1)
+  cache_file="/tmp/ip_address.cache"
+  cache_timeout=900 # 15 minutes in seconds
+  now=$(date +%s 2>/dev/null || echo 0)
+  mtime=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+  cached_ip=""
+
+  # Read cache if file exists, is non-empty, and is younger than 15 minutes
+  if [[ -s "$cache_file" ]] && [[ "$now" =~ ^[0-9]+$ ]] && [[ "$mtime" =~ ^[0-9]+$ ]]; then
+    if (( now - mtime < cache_timeout )); then
+      cached_ip=$(cat "$cache_file" 2>/dev/null)
+    fi
   fi
-  if [[ $ip == "" ]]; then
-    # Never reply with a blank string - instead, use localhost if no IP is found
-    # This would be the case if no network connection is non-existent
-    echo "127.0.0.1"
+
+  if [[ -n "$cached_ip" ]]; then
+    ip="$cached_ip"
   else
-    # Reply with the real IP of the first network interface.
-    # If multiple networks, only the first will report.
-    echo $ip
+    getPlatform
+    if (( $platform == 22 )); then
+      # AWS will return the internal IP on the NIC, so instead, use the instance metadata service to obtain the public IP
+      ip=$(/usr/bin/curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+    else
+      # Work with any NIC
+      ip=$(/sbin/ip -f inet addr show $($0 nic) | grep -Po 'inet \K[\d.]+' | head -n 1)
+    fi
+
+    if [[ $ip == "" ]]; then
+      # Never reply with a blank string - instead, use localhost if no IP is found
+      # This would be the case if network connection is non-existent
+      ip="127.0.0.1"
+    fi
+
+    # Attempt to write to cache and set permissions (ignore errors so output isn't affected)
+    {
+      echo "$ip" > "$cache_file"
+      chmod 777 "$cache_file"
+    } 2>/dev/null
   fi
+
+  # Always output strictly the IP address
+  echo "$ip"
 
 elif [[ $COMMAND == "nic" ]]; then
   # test the route based on $host and treat that as the interface

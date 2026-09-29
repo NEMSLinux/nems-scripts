@@ -91,6 +91,37 @@ if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.8'")}') )); then
     apt -y install nems-kiosk
   fi
 
+  # Move monit service so it doesn't get replaced by apt
+  if [[ -e /lib/systemd/system/monit.service ]]; then
+    cat <<EOF > /etc/systemd/system/monit.service
+[Unit]
+Description=Pro-active monitoring utility for unix systems
+After=network-online.target
+Wants=network-online.target
+Documentation=man:monit(1) https://mmonit.com/wiki/Monit/HowTo
+
+[Service]
+Type=simple
+KillMode=process
+ExecStart=/usr/local/bin/monit -I
+ExecStop=/usr/local/bin/monit quit
+ExecReload=/usr/local/bin/monit reload
+Restart=always
+RestartSec=5s
+StandardOutput=null
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Clean up any legacy file in /lib/systemd/system if it exists
+    rm -f /lib/systemd/system/monit.service
+    systemctl daemon-reload
+    systemctl restart monit
+  fi
+
+
+
 fi
 
 if (( $(awk 'BEGIN {print ("'$ver'" >= "'1.6'")}') )); then

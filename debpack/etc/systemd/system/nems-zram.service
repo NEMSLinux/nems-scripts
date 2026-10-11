@@ -1,0 +1,12 @@
+[Unit]
+Description=NEMS Linux Adaptive zram Service
+After=local-fs.target
+Before=swap.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/nems-zram
+
+[Install]
+WantedBy=multi-user.target

@@ -2,6 +2,9 @@
 platform=$(/usr/local/bin/nems-info platform)
 export PIP_ROOT_USER_ACTION=ignore
 
+# Some systemd changes may occur, so always reload the daemon after update
+systemctl daemon-reload
+
 # Replaced with self-maintained version since this package is no longer maintained
 # npm install -g speed-cloudflare-cli
 
@@ -46,3 +49,6 @@ fi
   fi
   chown root:root /var/log/nems/nems-userctl.log
   chmod 0600 /var/log/nems/nems-userctl.log
+
+# Enable modern ZRAM
+systemctl enable nems-zram.service

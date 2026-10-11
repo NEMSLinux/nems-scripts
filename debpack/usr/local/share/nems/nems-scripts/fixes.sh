@@ -224,18 +224,6 @@ fi
     /usr/local/bin/hw-detect
   fi
 
-# Load ZRAM Swap at boot
-  if [[ -e /etc/rc.local ]]; then
-    if ! grep -q "NEMS0000" /etc/rc.local; then
-      # fix comment so it doesn't get replaced
-      /bin/sed -i -- 's,"exit 0",exit with errorcode 0,g' /etc/rc.local
-      # add to boot process
-      /bin/sed -i -- 's,exit 0,# Load Swap into ZRAM NEMS0000\n/usr/local/share/nems/nems-scripts/zram.sh > /dev/null 2>\&1\n\nexit 0,g' /etc/rc.local
-      # run it now
-      /usr/local/share/nems/nems-scripts/zram.sh # Do it now
-    fi
-  fi
-
 # Final cleanup
 /root/nems/nems-admin/build/999-cleanup
 

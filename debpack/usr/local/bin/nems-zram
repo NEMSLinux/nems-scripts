@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# NEMS Linux Boot Runtime Memory Compression Tuner
+
+TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
+CPU_CORES=$(nproc)
+
+[ -z "$TOTAL_RAM_MB" ] || [ "$TOTAL_RAM_MB" -eq 0 ] && TOTAL_RAM_MB=1024
+
+if [ "$TOTAL_RAM_MB" -le 1024 ]; then
+    ZRAM_PERCENT=60
+    COMP_ALG="lz4"
+    SWAPPINESS=160
+elif [ "$TOTAL_RAM_MB" -le 3072 ]; then
+    ZRAM_PERCENT=50
+    COMP_ALG="zstd"
+    SWAPPINESS=140
+else
+    ZRAM_PERCENT=35
+    COMP_ALG="zstd"
+    SWAPPINESS=100
+fi
+
+ZRAM_SIZE_BYTES=$(( TOTAL_RAM_MB * 1024 * 1024 * ZRAM_PERCENT / 100 ))
+
+logger -t nems-zram "Detected ${TOTAL_RAM_MB}MB RAM. Allocating ${ZRAM_PERCENT}% zram (${COMP_ALG})."
+
+modprobe zram num_devices=1 2>/dev/null || true
+
+if grep -q "/dev/zram0" /proc/swaps; then
+    swapoff /dev/zram0 2>/dev/null || true
+fi
+if [ -f /sys/block/zram0/reset ]; then
+    echo 1 > /sys/block/zram0/reset 2>/dev/null || true
+fi
+
+if [ -f /sys/block/zram0/comp_algorithm ]; then
+    echo "$COMP_ALG" > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+fi
+
+echo "$ZRAM_SIZE_BYTES" > /sys/block/zram0/disksize
+mkswap /dev/zram0 > /dev/null
+swapon -p 32767 /dev/zram0
+
+sysctl -w vm.swappiness=$SWAPPINESS > /dev/null
+sysctl -w vm.page-cluster=0 > /dev/null
+sysctl -w vm.vfs_cache_pressure=100 > /dev/null
